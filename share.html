@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Saving share…</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <meta name="theme-color" content="#1b1f3b" />
+  </head>
+  <body class="share">
+    <main class="card">
+      <h1>Saving…</h1>
+      <p>If you stay on this screen, refresh the app and your share will appear.</p>
+      <a href="/index.html">Go to clips</a>
+    </main>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js');
+      }
+    </script>
+  </body>
+</html>

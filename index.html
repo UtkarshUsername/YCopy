@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Clip Vault</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="/styles.css" />
+    <meta name="theme-color" content="#1b1f3b" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Local Clip Vault</h1>
+        <p>Save shared text, links, and files offline.</p>
+      </div>
+      <button id="refresh">Refresh</button>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>Add note</h2>
+        <form id="add-form">
+          <label>
+            Title
+            <input type="text" name="title" placeholder="Optional title" />
+          </label>
+          <label>
+            Text
+            <textarea name="text" rows="3" placeholder="Paste text here"></textarea>
+          </label>
+          <label>
+            URL
+            <input type="url" name="url" placeholder="https://" />
+          </label>
+          <button type="submit">Save</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="list-header">
+          <h2>Saved clips</h2>
+          <button id="clear-all" class="ghost">Clear all</button>
+        </div>
+        <ul id="items" class="items"></ul>
+        <p id="empty-state" class="empty">No clips yet. Share something from Android or add one here.</p>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
