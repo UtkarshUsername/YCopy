@@ -12,6 +12,31 @@ const toast = document.getElementById('toast');
 let activeObjectUrls = [];
 let itemsById = new Map();
 
+const MAX_TITLE_LENGTH = 90;
+const MAX_TEXT_LENGTH = 320;
+const MAX_URL_LENGTH = 88;
+const MAX_FILE_NAME_LENGTH = 56;
+
+function escapeHtml(value = '') {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function truncateText(value = '', maxLength) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function truncateMiddle(value = '', maxLength) {
+  if (value.length <= maxLength) return value;
+  const sideLength = Math.max(1, Math.floor((maxLength - 1) / 2));
+  return `${value.slice(0, sideLength)}…${value.slice(-sideLength)}`;
+}
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -87,28 +112,32 @@ function buildFilePreview(files = []) {
   const parts = files
     .map((file) => {
       if (!file) return '';
+      const fileName = file.name || 'file';
+      const safeFileName = escapeHtml(fileName);
+      const shortFileName = escapeHtml(truncateMiddle(fileName, MAX_FILE_NAME_LENGTH));
+      const safeFileType = escapeHtml(file.type || 'unknown');
       if (file.blob) {
         const url = URL.createObjectURL(file.blob);
         activeObjectUrls.push(url);
         if (file.type?.startsWith('image/')) {
           return `
             <figure class="file-item">
-              <img src="${url}" alt="${file.name}" loading="lazy" />
-              <figcaption>${file.name}</figcaption>
+              <img src="${url}" alt="${safeFileName}" loading="lazy" />
+              <figcaption title="${safeFileName}">${shortFileName}</figcaption>
             </figure>
           `;
         }
         return `
           <div class="file-item">
-            <a href="${url}" download="${file.name}">${file.name}</a>
-            <small>${file.type || 'unknown'}</small>
+            <a href="${url}" download="${safeFileName}" title="${safeFileName}">${shortFileName}</a>
+            <small>${safeFileType}</small>
           </div>
         `;
       }
       return `
         <div class="file-item">
-          <span>${file.name}</span>
-          <small>${file.type || 'unknown'}</small>
+          <span title="${safeFileName}">${shortFileName}</span>
+          <small>${safeFileType}</small>
         </div>
       `;
     })
@@ -149,16 +178,27 @@ function renderItems(items) {
     .forEach((item) => {
       const li = document.createElement('li');
       li.className = 'item';
+      const rawTitle = item.title || 'Untitled clip';
+      const safeTitle = escapeHtml(truncateText(rawTitle, MAX_TITLE_LENGTH));
+      const safeTitleFull = escapeHtml(rawTitle);
+      const safeText = item.text
+        ? escapeHtml(truncateText(item.text, MAX_TEXT_LENGTH))
+        : '';
+      const safeTextFull = item.text ? escapeHtml(item.text) : '';
+      const safeUrl = item.url ? escapeHtml(item.url) : '';
+      const safeUrlLabel = item.url
+        ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
+        : '';
       const copyButton = item.title || item.text || item.url
         ? `<button data-id="${item.id}" data-action="copy" class="ghost">Copy</button>`
         : '';
       li.innerHTML = `
         <div>
-          <h3>${item.title || 'Untitled clip'}</h3>
+          <h3 title="${safeTitleFull}">${safeTitle}</h3>
           <small>${formatDate(item.createdAt)}</small>
         </div>
-        ${item.text ? `<p>${item.text}</p>` : ''}
-        ${item.url ? `<a href="${item.url}" target="_blank" rel="noopener">${item.url}</a>` : ''}
+        ${item.text ? `<p class="item-text" title="${safeTextFull}">${safeText}</p>` : ''}
+        ${item.url ? `<a class="item-link" href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${safeUrlLabel}</a>` : ''}
         ${buildFilePreview(item.files)}
         <div class="actions">
           ${copyButton}
@@ -233,7 +273,9 @@ if (new URLSearchParams(window.location.search).get('shared')) {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js');
+  navigator.serviceWorker.register('service-worker.js')
+    .then((registration) => registration.update())
+    .catch(() => {});
 }
 
 loadItems();
