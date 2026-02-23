@@ -1,12 +1,12 @@
-const CACHE_NAME = 'clip-vault-static-v1';
+const CACHE_NAME = 'clip-vault-static-v2';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/share.html',
-  '/styles.css',
-  '/app.js',
-  '/manifest.json',
-  '/icon.svg',
+  '.',
+  'index.html',
+  'share.html',
+  'styles.css',
+  'app.js',
+  'manifest.json',
+  'icon.svg',
 ];
 
 const DB_NAME = 'clip-vault';
@@ -75,12 +75,13 @@ async function saveShare(formData) {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  if (url.pathname === '/share.html' && event.request.method === 'POST') {
+  if (url.pathname.endsWith('/share.html') && event.request.method === 'POST') {
     event.respondWith(
       (async () => {
         const formData = await event.request.formData();
         await saveShare(formData);
-        return Response.redirect('/index.html?shared=1', 303);
+        const redirectUrl = new URL('index.html?shared=1', self.registration.scope);
+        return Response.redirect(redirectUrl.toString(), 303);
       })()
     );
     return;

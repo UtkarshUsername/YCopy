@@ -158,7 +158,7 @@ if (new URLSearchParams(window.location.search).get('shared')) {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service-worker.js');
+  navigator.serviceWorker.register('service-worker.js');
 }
 
 loadItems();
