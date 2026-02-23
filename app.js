@@ -12,7 +12,6 @@ const toast = document.getElementById('toast');
 let activeObjectUrls = [];
 let itemsById = new Map();
 
-const MAX_TITLE_LENGTH = 90;
 const MAX_TEXT_LENGTH = 320;
 const MAX_URL_LENGTH = 88;
 const MAX_FILE_NAME_LENGTH = 56;
@@ -157,7 +156,6 @@ async function copyToClipboard(value) {
 
 function buildClipboardText(item) {
   const parts = [];
-  if (item.title) parts.push(item.title);
   if (item.text) parts.push(item.text);
   if (item.url) parts.push(item.url);
   return parts.join('\n');
@@ -178,9 +176,15 @@ function renderItems(items) {
     .forEach((item) => {
       const li = document.createElement('li');
       li.className = 'item';
-      const rawTitle = item.title || 'Untitled clip';
-      const safeTitle = escapeHtml(truncateText(rawTitle, MAX_TITLE_LENGTH));
-      const safeTitleFull = escapeHtml(rawTitle);
+      const displayTitle = item.text
+        ? truncateText(item.text, MAX_TEXT_LENGTH)
+        : item.url
+          ? truncateMiddle(item.url, MAX_URL_LENGTH)
+          : item.files?.length
+            ? (item.files.length === 1 ? item.files[0]?.name || '1 file' : `${item.files.length} files`)
+            : 'Saved clip';
+      const safeTitle = escapeHtml(displayTitle);
+      const safeTitleFull = escapeHtml(displayTitle);
       const safeText = item.text
         ? escapeHtml(truncateText(item.text, MAX_TEXT_LENGTH))
         : '';
@@ -189,7 +193,7 @@ function renderItems(items) {
       const safeUrlLabel = item.url
         ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
         : '';
-      const copyButton = item.title || item.text || item.url
+      const copyButton = item.text || item.url
         ? `<button data-id="${item.id}" data-action="copy" class="ghost">Copy</button>`
         : '';
       li.innerHTML = `
@@ -240,17 +244,15 @@ async function loadItems() {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = new FormData(form);
-  const title = data.get('title')?.toString().trim();
   const text = data.get('text')?.toString().trim();
   const url = data.get('url')?.toString().trim();
 
-  if (!title && !text && !url) {
+  if (!text && !url) {
     showToast('Add at least one field');
     return;
   }
 
   await addItem({
-    title,
     text,
     url,
     createdAt: Date.now(),

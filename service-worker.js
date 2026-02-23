@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ycopy-static-v2';
+const CACHE_NAME = 'ycopy-static-v3';
 const STATIC_ASSETS = [
   '.',
   'index.html',
@@ -48,7 +48,6 @@ function openDb() {
 }
 
 async function saveShare(formData) {
-  const title = formData.get('title')?.toString().trim();
   const text = formData.get('text')?.toString().trim();
   const url = formData.get('url')?.toString().trim();
   const files = formData.getAll('files').map((file) => ({
@@ -61,7 +60,6 @@ async function saveShare(formData) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).add({
-      title,
       text,
       url,
       files,
