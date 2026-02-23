@@ -126,6 +126,14 @@ async function copyToClipboard(value) {
   showToast('Copied to clipboard');
 }
 
+function buildClipboardText(item) {
+  const parts = [];
+  if (item.title) parts.push(item.title);
+  if (item.text) parts.push(item.text);
+  if (item.url) parts.push(item.url);
+  return parts.join('\n');
+}
+
 function renderItems(items) {
   clearObjectUrls();
   list.innerHTML = '';
@@ -141,11 +149,8 @@ function renderItems(items) {
     .forEach((item) => {
       const li = document.createElement('li');
       li.className = 'item';
-      const copyTextButton = item.text
-        ? `<button data-id="${item.id}" data-action="copy-text" class="ghost">Copy text</button>`
-        : '';
-      const copyUrlButton = item.url
-        ? `<button data-id="${item.id}" data-action="copy-url" class="ghost">Copy link</button>`
+      const copyButton = item.title || item.text || item.url
+        ? `<button data-id="${item.id}" data-action="copy" class="ghost">Copy</button>`
         : '';
       li.innerHTML = `
         <div>
@@ -156,8 +161,7 @@ function renderItems(items) {
         ${item.url ? `<a href="${item.url}" target="_blank" rel="noopener">${item.url}</a>` : ''}
         ${buildFilePreview(item.files)}
         <div class="actions">
-          ${copyTextButton}
-          ${copyUrlButton}
+          ${copyButton}
           <button data-id="${item.id}" data-action="delete" class="ghost">Delete</button>
         </div>
       `;
@@ -174,12 +178,13 @@ function renderItems(items) {
           await loadItems();
           showToast('Deleted clip');
           break;
-        case 'copy-text':
-          if (item.text) await copyToClipboard(item.text);
+        case 'copy': {
+          const clipboardText = buildClipboardText(item);
+          if (clipboardText) {
+            await copyToClipboard(clipboardText);
+          }
           break;
-        case 'copy-url':
-          if (item.url) await copyToClipboard(item.url);
-          break;
+        }
         default:
           break;
       }

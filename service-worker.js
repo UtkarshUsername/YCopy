@@ -1,4 +1,4 @@
-const CACHE_NAME = 'clip-vault-static-v2';
+const CACHE_NAME = 'ycopy-static-v1';
 const STATIC_ASSETS = [
   '.',
   'index.html',

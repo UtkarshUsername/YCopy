@@ -1,6 +1,6 @@
 {
-  "name": "Local Clip Vault",
-  "short_name": "Clip Vault",
+  "name": "YCopy",
+  "short_name": "YCopy",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
