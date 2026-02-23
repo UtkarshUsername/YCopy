@@ -116,6 +116,31 @@ button.ghost,
   word-break: break-word;
 }
 
+.file-preview {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.file-item {
+  border: 1px dashed #d0d5dd;
+  border-radius: 10px;
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.file-item img {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.file-item figcaption {
+  font-size: 0.85rem;
+  color: #667085;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;
