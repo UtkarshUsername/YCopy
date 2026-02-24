@@ -1,5 +1,11 @@
-const CACHE_NAME = 'ycopy-static-v6';
-const STATIC_ASSETS = [
+// Bump this value on every production deploy.
+// The cache name is derived from this constant so it updates automatically.
+const CACHE_VERSION = 'v7';
+const CACHE_PREFIX = 'ycopy-static';
+const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
+
+// Core app shell assets needed for first paint/offline boot.
+const CORE_ASSETS = [
   '.',
   'index.html',
   'share.html',
@@ -15,23 +21,26 @@ const STORE = 'items';
 const DB_VERSION = 1;
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    // Pre-cache core assets for reliable startup.
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(CORE_ASSETS);
+
+    // Activate the new worker as soon as install completes.
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    // Remove all prior app caches so users do not keep stale bundles.
+    const keys = await caches.keys();
+    const oldKeys = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
+    await Promise.all(oldKeys.map((key) => caches.delete(key)));
+
+    // Start controlling all open tabs immediately.
+    await self.clients.claim();
+  })());
 });
 
 function openDb() {
@@ -78,6 +87,63 @@ async function saveShare(formData) {
   });
 }
 
+function isCacheableResponse(response) {
+  return Boolean(response) && (response.ok || response.type === 'opaque');
+}
+
+function isHtmlRequest(request, url) {
+  if (request.mode === 'navigate' || request.destination === 'document') {
+    return true;
+  }
+  const accept = request.headers.get('accept') || '';
+  return accept.includes('text/html') || url.pathname.endsWith('.html');
+}
+
+function isStaticAssetRequest(request, url) {
+  if (request.destination === 'style' || request.destination === 'script') return true;
+  if (request.destination === 'image' || request.destination === 'font') return true;
+  return (
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.svg') ||
+    url.pathname.endsWith('.png') ||
+    url.pathname.endsWith('.jpg') ||
+    url.pathname.endsWith('.jpeg') ||
+    url.pathname.endsWith('.webp') ||
+    url.pathname.endsWith('.gif') ||
+    url.pathname.endsWith('.ico') ||
+    url.pathname.endsWith('.woff') ||
+    url.pathname.endsWith('.woff2')
+  );
+}
+
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (isCacheableResponse(response)) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw new Error('Network unavailable and no cached HTML response found.');
+  }
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  if (isCacheableResponse(response)) {
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -101,16 +167,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return response;
-      });
-    })
-  );
+  // Only apply app caching strategies for same-origin requests.
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  if (isHtmlRequest(event.request, url)) {
+    // HTML is network-first so deploys are picked up immediately.
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
+
+  if (isStaticAssetRequest(event.request, url)) {
+    // Static assets are cache-first for speed and offline resilience.
+    event.respondWith(cacheFirst(event.request));
+  }
 });

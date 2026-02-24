@@ -634,9 +634,26 @@ if (searchInput) {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js')
-    .then((registration) => registration.update())
-    .catch(() => {});
+  let hasRefreshedForNewWorker = false;
+
+  // When a new service worker takes control (after skipWaiting + clients.claim),
+  // reload once so the page immediately uses the latest cached assets.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hasRefreshedForNewWorker) return;
+    hasRefreshedForNewWorker = true;
+    window.location.reload();
+  });
+
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('service-worker.js');
+
+      // Force an update check at startup to pick up new deployments quickly.
+      await registration.update();
+    } catch {
+      // Ignore registration errors in production UI flow.
+    }
+  });
 }
 
 async function init() {
