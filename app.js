@@ -7,6 +7,7 @@ const list = document.getElementById('items');
 const emptyState = document.getElementById('empty-state');
 const refreshButton = document.getElementById('refresh');
 const clearAllButton = document.getElementById('clear-all');
+const searchInput = document.getElementById('search');
 const toast = document.getElementById('toast');
 const fab = document.getElementById('fab');
 const modalOverlay = document.getElementById('modal-overlay');
@@ -17,10 +18,14 @@ const lightboxClose = document.getElementById('lightbox-close');
 
 let activeObjectUrls = [];
 let itemsById = new Map();
+let allItems = [];
+let currentSearchQuery = '';
+let fuseIndex = null;
 
 const MAX_TEXT_LENGTH = 320;
 const MAX_URL_LENGTH = 88;
 const MAX_FILE_NAME_LENGTH = 56;
+const EMPTY_STATE_TEXT = emptyState.textContent;
 
 function escapeHtml(value = '') {
   return value
@@ -232,7 +237,45 @@ function sortItemsForDisplay(items = []) {
   });
 }
 
-function renderItems(items) {
+function rebuildSearchIndex(items = []) {
+  if (typeof window.Fuse !== 'function') {
+    fuseIndex = null;
+    return;
+  }
+
+  fuseIndex = new window.Fuse(items, {
+    includeScore: true,
+    ignoreLocation: true,
+    threshold: 0.35,
+    minMatchCharLength: 2,
+    keys: [
+      { name: 'text', weight: 0.45 },
+      { name: 'url', weight: 0.35 },
+      { name: 'files.name', weight: 0.15 },
+      { name: 'files.type', weight: 0.05 },
+    ],
+  });
+}
+
+function filterItems(items = [], query = '') {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return items;
+
+  if (fuseIndex) {
+    return fuseIndex.search(normalizedQuery).map((result) => result.item);
+  }
+
+  const needle = normalizedQuery.toLowerCase();
+  return items.filter((item) => {
+    const fileText = (item.files || [])
+      .map((file) => `${file?.name || ''} ${file?.type || ''}`)
+      .join(' ');
+    const haystack = `${item.text || ''}\n${item.url || ''}\n${fileText}`.toLowerCase();
+    return haystack.includes(needle);
+  });
+}
+
+function renderItems(items, query = '') {
   clearObjectUrls();
   list.innerHTML = '';
   const sortedItems = sortItemsForDisplay(items);
@@ -240,9 +283,15 @@ function renderItems(items) {
 
   if (!sortedItems.length) {
     emptyState.style.display = 'block';
+    if (query.trim()) {
+      emptyState.textContent = `No clips match "${truncateText(query.trim(), 48)}".`;
+    } else {
+      emptyState.textContent = EMPTY_STATE_TEXT;
+    }
     return;
   }
   emptyState.style.display = 'none';
+  emptyState.textContent = EMPTY_STATE_TEXT;
   sortedItems.forEach((item) => {
     const pinned = isItemPinned(item);
     const pinLabel = pinned ? 'Unpin' : 'Pin';
@@ -334,9 +383,16 @@ function renderItems(items) {
   });
 }
 
+function renderFilteredItems() {
+  const filteredItems = filterItems(allItems, currentSearchQuery);
+  renderItems(filteredItems, currentSearchQuery);
+}
+
 async function loadItems() {
   const items = await getItems();
-  renderItems(items);
+  allItems = items;
+  rebuildSearchIndex(allItems);
+  renderFilteredItems();
   return items;
 }
 
@@ -460,6 +516,13 @@ clearAllButton.addEventListener('click', async () => {
   await loadItems();
   showToast('Cleared all clips');
 });
+
+if (searchInput) {
+  searchInput.addEventListener('input', () => {
+    currentSearchQuery = searchInput.value;
+    renderFilteredItems();
+  });
+}
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js')

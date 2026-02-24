@@ -218,6 +218,11 @@ button.ghost:hover {
   color: var(--danger);
 }
 
+.search-input {
+  width: 100%;
+  margin-bottom: 0.85rem;
+}
+
 /* ── Items List ── */
 .items {
   list-style: none;

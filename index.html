@@ -23,6 +23,13 @@
           <h2>Saved clips</h2>
           <button id="clear-all" class="ghost">Clear all</button>
         </div>
+        <input
+          id="search"
+          class="search-input"
+          type="search"
+          placeholder="Search saved clips"
+          aria-label="Search saved clips"
+        />
         <ul id="items" class="items"></ul>
         <p id="empty-state" class="empty">No clips yet. Share something from Android or add one here.</p>
       </section>
@@ -57,6 +64,7 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
     <script src="app.js" type="module"></script>
   </body>
 </html>
