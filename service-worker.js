@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ycopy-static-v4';
+const CACHE_NAME = 'ycopy-static-v5';
 const STATIC_ASSETS = [
   '.',
   'index.html',
@@ -65,6 +65,7 @@ async function saveShare(formData) {
       url,
       files,
       createdAt,
+      pinnedAt: null,
     });
     tx.oncomplete = () => {
       resolve({

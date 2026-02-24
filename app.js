@@ -86,6 +86,16 @@ async function deleteItem(id) {
   });
 }
 
+async function updateItem(item) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(item);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 async function clearItems() {
   const db = await openDb();
   return new Promise((resolve, reject) => {
@@ -202,57 +212,88 @@ function buildClipboardText(item) {
   return parts.join('\n');
 }
 
+function getPinnedTimestamp(item) {
+  return Number.isFinite(item?.pinnedAt) ? item.pinnedAt : 0;
+}
+
+function isItemPinned(item) {
+  return getPinnedTimestamp(item) > 0;
+}
+
+function sortItemsForDisplay(items = []) {
+  return [...items].sort((a, b) => {
+    const aPinnedAt = getPinnedTimestamp(a);
+    const bPinnedAt = getPinnedTimestamp(b);
+    const aPinned = aPinnedAt > 0;
+    const bPinned = bPinnedAt > 0;
+    if (aPinned !== bPinned) return aPinned ? -1 : 1;
+    if (aPinned && bPinned && aPinnedAt !== bPinnedAt) return bPinnedAt - aPinnedAt;
+    return b.createdAt - a.createdAt;
+  });
+}
+
 function renderItems(items) {
   clearObjectUrls();
   list.innerHTML = '';
-  itemsById = new Map(items.map((item) => [item.id, item]));
+  const sortedItems = sortItemsForDisplay(items);
+  itemsById = new Map(sortedItems.map((item) => [item.id, item]));
 
-  if (!items.length) {
+  if (!sortedItems.length) {
     emptyState.style.display = 'block';
     return;
   }
   emptyState.style.display = 'none';
-  items
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .forEach((item) => {
-      const li = document.createElement('li');
-      li.className = 'item';
-      const displayTitle = item.text
-        ? truncateText(item.text, MAX_TEXT_LENGTH)
-        : item.url
-          ? truncateMiddle(item.url, MAX_URL_LENGTH)
-          : item.files?.length
-            ? (item.files.length === 1 ? item.files[0]?.name || '1 file' : `${item.files.length} files`)
-            : 'Saved clip';
-      const safeTitle = escapeHtml(displayTitle);
-      const safeTitleFull = escapeHtml(displayTitle);
-      const safeText = item.text
-        ? escapeHtml(truncateText(item.text, MAX_TEXT_LENGTH))
-        : '';
-      const safeTextFull = item.text ? escapeHtml(item.text) : '';
-      const safeUrl = item.url ? escapeHtml(item.url) : '';
-      const safeUrlLabel = item.url
-        ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
-        : '';
-      const hasImages = item.files?.some((f) => f?.type?.startsWith('image/') && f.blob);
-      const copyButton = item.text || item.url || hasImages
-        ? `<button data-id="${item.id}" data-action="copy" class="ghost">Copy</button>`
-        : '';
-      li.innerHTML = `
+  sortedItems.forEach((item) => {
+    const pinned = isItemPinned(item);
+    const pinLabel = pinned ? 'Unpin' : 'Pin';
+    const pinButtonClass = `ghost${pinned ? ' is-active' : ''}`;
+    const li = document.createElement('li');
+    li.className = `item${pinned ? ' item-pinned' : ''}`;
+    const displayTitle = item.text
+      ? truncateText(item.text, MAX_TEXT_LENGTH)
+      : item.url
+        ? truncateMiddle(item.url, MAX_URL_LENGTH)
+        : item.files?.length
+          ? (item.files.length === 1 ? item.files[0]?.name || '1 file' : `${item.files.length} files`)
+          : 'Saved clip';
+    const safeTitle = escapeHtml(displayTitle);
+    const safeTitleFull = escapeHtml(displayTitle);
+    const safeText = item.text
+      ? escapeHtml(truncateText(item.text, MAX_TEXT_LENGTH))
+      : '';
+    const safeTextFull = item.text ? escapeHtml(item.text) : '';
+    const safeUrl = item.url ? escapeHtml(item.url) : '';
+    const safeUrlLabel = item.url
+      ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
+      : '';
+    const hasImages = item.files?.some((f) => f?.type?.startsWith('image/') && f.blob);
+    const copyButton = item.text || item.url || hasImages
+      ? `<button data-id="${item.id}" data-action="copy" class="ghost">Copy</button>`
+      : '';
+    li.innerHTML = `
         <div>
           <h3 title="${safeTitleFull}">${safeTitle}</h3>
-          <small>${formatDate(item.createdAt)}</small>
+          <small>${pinned ? 'Pinned · ' : ''}${formatDate(item.createdAt)}</small>
         </div>
         ${item.text ? `<p class="item-text" title="${safeTextFull}">${safeText}</p>` : ''}
         ${item.url ? `<a class="item-link" href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${safeUrlLabel}</a>` : ''}
         ${buildFilePreview(item.files)}
         <div class="actions">
+          <button
+            data-id="${item.id}"
+            data-action="pin"
+            class="${pinButtonClass}"
+            aria-label="${pinLabel} clip"
+            title="${pinLabel}"
+          >
+            ${pinLabel}
+          </button>
           ${copyButton}
           <button data-id="${item.id}" data-action="delete" class="ghost">Delete</button>
         </div>
       `;
-      list.appendChild(li);
-    });
+    list.appendChild(li);
+  });
 
   list.querySelectorAll('button[data-action]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -274,6 +315,16 @@ function renderItems(items) {
               await copyImageToClipboard(imageFile.blob);
             }
           }
+          break;
+        }
+        case 'pin': {
+          const pinned = isItemPinned(item);
+          await updateItem({
+            ...item,
+            pinnedAt: pinned ? null : Date.now(),
+          });
+          await loadItems();
+          showToast(pinned ? 'Unpinned clip' : 'Pinned clip');
           break;
         }
         default:
@@ -360,6 +411,7 @@ form.addEventListener('submit', async (event) => {
     url,
     createdAt: Date.now(),
     files: [],
+    pinnedAt: null,
   });
   form.reset();
   modalOverlay.hidden = true;

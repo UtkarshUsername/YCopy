@@ -17,6 +17,8 @@
   --accent-hover: #2d48d9;
   --danger: #e74c5e;
   --danger-light: #fef0f1;
+  --pin: #b57400;
+  --pin-light: #fff5df;
   --border: #e8eaef;
   --shadow-sm: 0 1px 3px rgba(26, 29, 46, 0.04);
   --shadow-md: 0 4px 16px rgba(26, 29, 46, 0.06);
@@ -239,6 +241,10 @@ button.ghost:hover {
   border-bottom: none;
 }
 
+.item.item-pinned {
+  background: linear-gradient(90deg, var(--pin-light) 0%, transparent 42%);
+}
+
 .item > div:first-child {
   grid-column: 1;
   grid-row: 1;
@@ -318,6 +324,21 @@ button.ghost:hover {
   border-radius: 8px;
   font-size: 0;
   position: relative;
+}
+
+.actions button[data-action="pin"]::before {
+  content: '📌';
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.actions button[data-action="pin"]:hover::before,
+.actions button[data-action="pin"].is-active::before {
+  color: var(--pin);
+}
+
+.actions button[data-action="pin"].is-active {
+  background: var(--pin-light);
 }
 
 .actions button[data-action="copy"]::before {

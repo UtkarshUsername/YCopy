@@ -7,6 +7,7 @@ A local-first PWA clipboard that saves shared text, links, and files into Indexe
 - Share Target PWA (Android share sheet)
 - Offline-first with service worker caching
 - Saves text, links, and files to IndexedDB
+- Pin important clips to keep them at the top
 - Image previews and file download links
 - One-tap copy for saved text and links
 
