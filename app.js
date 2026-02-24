@@ -15,12 +15,23 @@ const modalClose = document.getElementById('modal-close');
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
 const lightboxClose = document.getElementById('lightbox-close');
+const headerDefault = document.getElementById('header-default');
+const headerSelection = document.getElementById('header-selection');
+const selectionCount = document.getElementById('selection-count');
+const selectionClose = document.getElementById('selection-close');
+const selectionPin = document.getElementById('selection-pin');
+const selectionCopy = document.getElementById('selection-copy');
+const selectionDelete = document.getElementById('selection-delete');
 
 let activeObjectUrls = [];
 let itemsById = new Map();
 let allItems = [];
 let currentSearchQuery = '';
 let fuseIndex = null;
+let selectedIds = new Set();
+let selectionMode = false;
+let longPressTimer = null;
+const LONG_PRESS_MS = 500;
 
 const MAX_TEXT_LENGTH = 320;
 const MAX_URL_LENGTH = 88;
@@ -275,6 +286,66 @@ function filterItems(items = [], query = '') {
   });
 }
 
+function enterSelectionMode(id) {
+  selectionMode = true;
+  selectedIds.clear();
+  selectedIds.add(id);
+  updateSelectionUI();
+}
+
+function exitSelectionMode() {
+  selectionMode = false;
+  selectedIds.clear();
+  updateSelectionUI();
+  document.querySelectorAll('.item.item-selected').forEach((el) => el.classList.remove('item-selected'));
+}
+
+function toggleSelection(id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+  } else {
+    selectedIds.add(id);
+  }
+  if (selectedIds.size === 0) {
+    exitSelectionMode();
+    return;
+  }
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  headerDefault.hidden = selectionMode;
+  headerSelection.hidden = !selectionMode;
+  selectionCount.textContent = selectedIds.size;
+  document.querySelectorAll('.item[data-item-id]').forEach((el) => {
+    const id = Number(el.dataset.itemId);
+    el.classList.toggle('item-selected', selectedIds.has(id));
+  });
+}
+
+function updateClearAllVisibility() {
+  clearAllButton.style.display = (allItems.length === 0 || currentSearchQuery.trim()) ? 'none' : '';
+}
+
+async function copyItemToClipboard(item) {
+  const clipboardText = buildClipboardText(item);
+  if (clipboardText) {
+    await copyToClipboard(clipboardText);
+  } else {
+    const imageFile = item.files?.find((f) => f?.type?.startsWith('image/') && f.blob);
+    if (imageFile) {
+      await copyImageToClipboard(imageFile.blob);
+    }
+  }
+}
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
 function renderItems(items, query = '') {
   clearObjectUrls();
   list.innerHTML = '';
@@ -288,25 +359,18 @@ function renderItems(items, query = '') {
     } else {
       emptyState.textContent = EMPTY_STATE_TEXT;
     }
+    updateClearAllVisibility();
     return;
   }
   emptyState.style.display = 'none';
   emptyState.textContent = EMPTY_STATE_TEXT;
+  updateClearAllVisibility();
+
   sortedItems.forEach((item) => {
     const pinned = isItemPinned(item);
-    const pinLabel = pinned ? 'Unpin' : 'Pin';
-    const pinButtonClass = `ghost${pinned ? ' is-active' : ''}`;
     const li = document.createElement('li');
-    li.className = `item${pinned ? ' item-pinned' : ''}`;
-    const displayTitle = item.text
-      ? truncateText(item.text, MAX_TEXT_LENGTH)
-      : item.url
-        ? truncateMiddle(item.url, MAX_URL_LENGTH)
-        : item.files?.length
-          ? (item.files.length === 1 ? item.files[0]?.name || '1 file' : `${item.files.length} files`)
-          : 'Saved clip';
-    const safeTitle = escapeHtml(displayTitle);
-    const safeTitleFull = escapeHtml(displayTitle);
+    li.className = `item${pinned ? ' item-pinned' : ''}${selectedIds.has(item.id) ? ' item-selected' : ''}`;
+    li.dataset.itemId = item.id;
     const safeText = item.text
       ? escapeHtml(truncateText(item.text, MAX_TEXT_LENGTH))
       : '';
@@ -315,71 +379,75 @@ function renderItems(items, query = '') {
     const safeUrlLabel = item.url
       ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
       : '';
-    const hasImages = item.files?.some((f) => f?.type?.startsWith('image/') && f.blob);
-    const copyButton = item.text || item.url || hasImages
-      ? `<button data-id="${item.id}" data-action="copy" class="ghost">Copy</button>`
-      : '';
     li.innerHTML = `
         <div>
-          <h3 title="${safeTitleFull}">${safeTitle}</h3>
-          <small>${pinned ? 'Pinned · ' : ''}${formatDate(item.createdAt)}</small>
+          <small>${pinned ? '📌 · ' : ''}${formatDate(item.createdAt)}</small>
         </div>
         ${item.text ? `<p class="item-text" title="${safeTextFull}">${safeText}</p>` : ''}
         ${item.url ? `<a class="item-link" href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${safeUrlLabel}</a>` : ''}
         ${buildFilePreview(item.files)}
-        <div class="actions">
-          <button
-            data-id="${item.id}"
-            data-action="pin"
-            class="${pinButtonClass}"
-            aria-label="${pinLabel} clip"
-            title="${pinLabel}"
-          >
-            ${pinLabel}
-          </button>
-          ${copyButton}
-          <button data-id="${item.id}" data-action="delete" class="ghost">Delete</button>
-        </div>
       `;
-    list.appendChild(li);
-  });
 
-  list.querySelectorAll('button[data-action]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const item = itemsById.get(Number(button.dataset.id));
-      if (!item) return;
-      switch (button.dataset.action) {
-        case 'delete':
-          await deleteItem(item.id);
-          await loadItems();
-          showToast('Deleted clip');
-          break;
-        case 'copy': {
-          const clipboardText = buildClipboardText(item);
-          if (clipboardText) {
-            await copyToClipboard(clipboardText);
-          } else {
-            const imageFile = item.files?.find((f) => f?.type?.startsWith('image/') && f.blob);
-            if (imageFile) {
-              await copyImageToClipboard(imageFile.blob);
-            }
-          }
-          break;
+    // Long press to enter selection mode
+    let pressStarted = false;
+    const startLongPress = (e) => {
+      // Don't interfere with links or images
+      if (e.target.closest('a, .img-preview')) return;
+      pressStarted = true;
+      cancelLongPress();
+      longPressTimer = setTimeout(() => {
+        pressStarted = false;
+        if (!selectionMode) {
+          enterSelectionMode(item.id);
+        } else {
+          toggleSelection(item.id);
         }
-        case 'pin': {
-          const pinned = isItemPinned(item);
-          await updateItem({
-            ...item,
-            pinnedAt: pinned ? null : Date.now(),
-          });
-          await loadItems();
-          showToast(pinned ? 'Unpinned clip' : 'Pinned clip');
-          break;
-        }
-        default:
-          break;
+        // Vibrate on supported devices
+        if (navigator.vibrate) navigator.vibrate(30);
+      }, LONG_PRESS_MS);
+    };
+
+    const endPress = (e) => {
+      cancelLongPress();
+      if (!pressStarted) return;
+      pressStarted = false;
+      // Don't handle taps on links or images
+      if (e.target.closest('a, .img-preview')) return;
+      if (selectionMode) {
+        toggleSelection(item.id);
+      } else {
+        copyItemToClipboard(item);
       }
+    };
+
+    const cancelPress = () => {
+      cancelLongPress();
+      pressStarted = false;
+    };
+
+    // Touch events
+    li.addEventListener('touchstart', startLongPress, { passive: true });
+    li.addEventListener('touchend', (e) => { endPress(e); });
+    li.addEventListener('touchmove', cancelPress, { passive: true });
+    li.addEventListener('touchcancel', cancelPress);
+
+    // Mouse events for desktop
+    li.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      startLongPress(e);
     });
+    li.addEventListener('mouseup', (e) => {
+      if (e.button !== 0) return;
+      endPress(e);
+    });
+    li.addEventListener('mouseleave', cancelPress);
+
+    // Prevent context menu on long press
+    li.addEventListener('contextmenu', (e) => {
+      if (selectionMode) e.preventDefault();
+    });
+
+    list.appendChild(li);
   });
 }
 
@@ -505,6 +573,51 @@ lightbox.addEventListener('click', (e) => {
     lightbox.hidden = true;
     lightboxImg.src = '';
   }
+});
+
+// Selection header actions
+selectionClose.addEventListener('click', exitSelectionMode);
+
+selectionPin.addEventListener('click', async () => {
+  const ids = [...selectedIds];
+  for (const id of ids) {
+    const item = itemsById.get(id);
+    if (!item) continue;
+    const pinned = isItemPinned(item);
+    await updateItem({ ...item, pinnedAt: pinned ? null : Date.now() });
+  }
+  const count = ids.length;
+  exitSelectionMode();
+  await loadItems();
+  showToast(count === 1 ? 'Toggled pin' : `Toggled pin for ${count} clips`);
+});
+
+selectionCopy.addEventListener('click', async () => {
+  const ids = [...selectedIds];
+  const texts = [];
+  for (const id of ids) {
+    const item = itemsById.get(id);
+    if (!item) continue;
+    const t = buildClipboardText(item);
+    if (t) texts.push(t);
+  }
+  if (texts.length) {
+    await copyToClipboard(texts.join('\n\n'));
+  }
+  exitSelectionMode();
+});
+
+selectionDelete.addEventListener('click', async () => {
+  const ids = [...selectedIds];
+  const count = ids.length;
+  const shouldDelete = window.confirm(`Delete ${count} clip${count > 1 ? 's' : ''}?`);
+  if (!shouldDelete) return;
+  for (const id of ids) {
+    await deleteItem(id);
+  }
+  exitSelectionMode();
+  await loadItems();
+  showToast(`Deleted ${count} clip${count > 1 ? 's' : ''}`);
 });
 
 refreshButton.addEventListener('click', loadItems);

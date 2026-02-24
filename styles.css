@@ -231,15 +231,16 @@ button.ghost:hover {
 }
 
 .item {
-  padding: 0.75rem 0;
+  padding: 0.75rem 0.5rem;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr;
   grid-template-rows: auto auto;
-  gap: 0.15rem 0.75rem;
+  gap: 0.15rem;
   align-items: start;
   border-bottom: 1px solid var(--border);
   position: relative;
   transition: background 0.12s ease;
+  border-radius: var(--radius-sm);
 }
 
 .item:last-child {
@@ -251,8 +252,6 @@ button.ghost:hover {
 }
 
 .item > div:first-child {
-  grid-column: 1;
-  grid-row: 1;
   min-width: 0;
 }
 
@@ -271,8 +270,6 @@ button.ghost:hover {
 }
 
 .item p {
-  grid-column: 1 / -1;
-  grid-row: 2;
   font-size: 0.84rem;
   color: var(--text-secondary);
   line-height: 1.45;
@@ -287,8 +284,6 @@ button.ghost:hover {
 }
 
 .item a {
-  grid-column: 1 / -1;
-  grid-row: 2;
   color: var(--accent);
   font-size: 0.82rem;
   text-decoration: none;
@@ -305,74 +300,102 @@ button.ghost:hover {
   text-decoration: underline;
 }
 
-/* When item has both text and url */
-.item p + a {
-  grid-row: 3;
-}
-
-/* ── Actions (inline, right-aligned) ── */
-.actions {
-  grid-column: 2;
-  grid-row: 1 / -1;
+/* ── Selection Header ── */
+.header-selection {
+  background: var(--accent);
+  color: #fff;
+  padding: 0.65rem 0.75rem;
   display: flex;
   align-items: center;
-  gap: 0.15rem;
-  align-self: center;
+  gap: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  animation: slideDown 0.2s ease;
 }
 
-.actions button {
-  width: 30px;
-  height: 30px;
+.header-selection[hidden] {
+  display: none;
+}
+
+.header-selection #selection-count {
+  font-size: 1.05rem;
+  font-weight: 700;
+  flex: 1;
+}
+
+.selection-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.selection-btn {
+  width: 38px;
+  height: 38px;
   padding: 0;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  font-size: 0;
-  position: relative;
+  border-radius: 10px;
+  background: transparent;
+  color: #fff;
+  font-size: 1.15rem;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease;
 }
 
-.actions button[data-action="pin"]::before {
-  content: '📌';
-  font-size: 0.9rem;
-  color: var(--text-secondary);
+.selection-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
-.actions button[data-action="pin"]:hover::before,
-.actions button[data-action="pin"].is-active::before {
-  color: var(--pin);
+.selection-btn:active {
+  transform: scale(0.92);
 }
 
-.actions button[data-action="pin"].is-active {
-  background: var(--pin-light);
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.actions button[data-action="copy"]::before {
-  content: '⧉';
-  font-size: 1rem;
-  color: var(--text-secondary);
+/* ── Item tap / selection states ── */
+.item {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.actions button[data-action="copy"]:hover::before {
-  color: var(--accent);
+.item:active:not(.item-selected) {
+  background: var(--surface-hover);
 }
 
-.actions button[data-action="delete"]::before {
-  content: '✕';
+.item.item-selected {
+  background: var(--accent-light);
+  border-color: rgba(61, 90, 241, 0.15);
+}
+
+.item.item-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
+
+/* ── Pin indicator (no action buttons shown inline) ── */
+.item .pin-indicator {
+  grid-column: 2;
+  grid-row: 1;
   font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.actions button[data-action="delete"]:hover {
-  background: var(--danger-light);
-}
-
-.actions button[data-action="delete"]:hover::before {
-  color: var(--danger);
+  align-self: center;
+  opacity: 0.7;
 }
 
 /* ── File Preview ── */
 .file-preview {
-  grid-column: 1 / -1;
   display: grid;
   gap: 0.5rem;
   margin-top: 0.25rem;

@@ -5,16 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>YCopy</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css?v=4" />
     <meta name="theme-color" content="#1b1f3b" />
   </head>
   <body>
-    <header>
+    <header id="header-default">
       <div>
         <h1>YCopy</h1>
-        <p>Save shared text, links, and files offline.</p>
       </div>
       <button id="refresh">Refresh</button>
+    </header>
+
+    <header id="header-selection" class="header-selection" hidden>
+      <button id="selection-close" class="selection-btn" aria-label="Close selection">✕</button>
+      <span id="selection-count">0</span>
+      <div class="selection-actions">
+        <button id="selection-pin" class="selection-btn" aria-label="Pin selected">📌</button>
+        <button id="selection-copy" class="selection-btn" aria-label="Copy selected">⧉</button>
+        <button id="selection-delete" class="selection-btn" aria-label="Delete selected">🗑</button>
+      </div>
     </header>
 
     <main>
