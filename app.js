@@ -11,6 +11,9 @@ const toast = document.getElementById('toast');
 const fab = document.getElementById('fab');
 const modalOverlay = document.getElementById('modal-overlay');
 const modalClose = document.getElementById('modal-close');
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+const lightboxClose = document.getElementById('lightbox-close');
 
 let activeObjectUrls = [];
 let itemsById = new Map();
@@ -124,7 +127,7 @@ function buildFilePreview(files = []) {
         if (file.type?.startsWith('image/')) {
           return `
             <figure class="file-item">
-              <img src="${url}" alt="${safeFileName}" loading="lazy" />
+              <img src="${url}" alt="${safeFileName}" loading="lazy" class="img-preview" data-full="${url}" />
               <figcaption title="${safeFileName}">${shortFileName}</figcaption>
             </figure>
           `;
@@ -375,6 +378,25 @@ modalClose.addEventListener('click', () => {
 
 modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) modalOverlay.hidden = true;
+});
+
+list.addEventListener('click', (e) => {
+  const img = e.target.closest('.img-preview');
+  if (!img) return;
+  lightboxImg.src = img.dataset.full;
+  lightbox.hidden = false;
+});
+
+lightboxClose.addEventListener('click', () => {
+  lightbox.hidden = true;
+  lightboxImg.src = '';
+});
+
+lightbox.addEventListener('click', (e) => {
+  if (e.target === lightbox) {
+    lightbox.hidden = true;
+    lightboxImg.src = '';
+  }
 });
 
 refreshButton.addEventListener('click', loadItems);
