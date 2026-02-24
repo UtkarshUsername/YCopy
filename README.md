@@ -49,3 +49,8 @@ Then in GitHub Pages settings, use:
 
 - The Share Target API requires HTTPS and a PWA install.
 - Some browsers may limit share targets or background share handling.
+
+## Third-Party Licenses
+
+- Fuse.js (Apache 2.0): see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- Full Apache 2.0 text for bundled Fuse.js: [licenses/fuse.js-LICENSE](licenses/fuse.js-LICENSE)

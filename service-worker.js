@@ -1,10 +1,11 @@
-const CACHE_NAME = 'ycopy-static-v5';
+const CACHE_NAME = 'ycopy-static-v6';
 const STATIC_ASSETS = [
   '.',
   'index.html',
   'share.html',
   'styles.css',
   'app.js',
+  'fuse.min.js',
   'manifest.json',
   'icon.svg',
 ];
