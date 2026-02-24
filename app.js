@@ -242,6 +242,54 @@ function renderItems(items) {
 async function loadItems() {
   const items = await getItems();
   renderItems(items);
+  return items;
+}
+
+function clearSharedParamsFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('shared');
+  url.searchParams.delete('sharedId');
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState({}, '', nextUrl);
+}
+
+function getLatestItem(items = []) {
+  return items.reduce((latest, item) => {
+    if (!latest) return item;
+    return item.createdAt > latest.createdAt ? item : latest;
+  }, null);
+}
+
+async function handleSharedContent(items) {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('shared')) return;
+
+  const sharedId = Number(params.get('sharedId'));
+  const sharedItem = Number.isInteger(sharedId)
+    ? (items.find((item) => item.id === sharedId) || getLatestItem(items))
+    : getLatestItem(items);
+  const clipboardText = sharedItem ? buildClipboardText(sharedItem) : '';
+
+  if (!clipboardText) {
+    showToast('Shared content saved');
+    clearSharedParamsFromUrl();
+    return;
+  }
+
+  if (!navigator.clipboard) {
+    showToast('Shared content saved (clipboard unavailable)');
+    clearSharedParamsFromUrl();
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(clipboardText);
+    showToast('Shared content saved and copied');
+  } catch {
+    showToast('Shared content saved (clipboard blocked)');
+  }
+
+  clearSharedParamsFromUrl();
 }
 
 form.addEventListener('submit', async (event) => {
@@ -290,14 +338,15 @@ clearAllButton.addEventListener('click', async () => {
   showToast('Cleared all clips');
 });
 
-if (new URLSearchParams(window.location.search).get('shared')) {
-  showToast('Shared content saved');
-}
-
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js')
     .then((registration) => registration.update())
     .catch(() => {});
 }
 
-loadItems();
+async function init() {
+  const items = await loadItems();
+  await handleSharedContent(items);
+}
+
+init();

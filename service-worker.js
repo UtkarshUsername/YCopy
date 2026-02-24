@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ycopy-static-v3';
+const CACHE_NAME = 'ycopy-static-v4';
 const STATIC_ASSETS = [
   '.',
   'index.html',
@@ -55,17 +55,23 @@ async function saveShare(formData) {
     type: file.type,
     blob: file,
   }));
+  const createdAt = Date.now();
 
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).add({
+    const request = tx.objectStore(STORE).add({
       text,
       url,
       files,
-      createdAt: Date.now(),
+      createdAt,
     });
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      resolve({
+        id: Number(request.result),
+        createdAt,
+      });
+    };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -77,8 +83,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         const formData = await event.request.formData();
-        await saveShare(formData);
-        const redirectUrl = new URL('index.html?shared=1', self.registration.scope);
+        const savedItem = await saveShare(formData);
+        const redirectUrl = new URL('index.html', self.registration.scope);
+        redirectUrl.searchParams.set('shared', '1');
+        if (Number.isFinite(savedItem?.id)) {
+          redirectUrl.searchParams.set('sharedId', String(savedItem.id));
+        }
         return Response.redirect(redirectUrl.toString(), 303);
       })()
     );
