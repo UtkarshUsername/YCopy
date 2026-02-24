@@ -379,12 +379,10 @@ function renderItems(items, query = '') {
       ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
       : '';
     li.innerHTML = `
-        <div>
-          <small>${pinned ? '📌 · ' : ''}${formatDate(item.createdAt)}</small>
-        </div>
         ${item.text ? `<p class="item-text" title="${safeTextFull}">${safeText}</p>` : ''}
         ${item.url ? `<a class="item-link" href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${safeUrlLabel}</a>` : ''}
         ${buildFilePreview(item.files)}
+        <small class="item-time">${pinned ? '📌 · ' : ''}${formatDate(item.createdAt)}</small>
       `;
 
     // Long press to enter selection mode
