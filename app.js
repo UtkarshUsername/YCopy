@@ -157,6 +157,41 @@ async function copyToClipboard(value) {
   showToast('Copied to clipboard');
 }
 
+async function copyImageToClipboard(blob) {
+  if (!navigator.clipboard?.write) {
+    showToast('Image copy not supported');
+    return;
+  }
+  const type = blob.type === 'image/png' ? 'image/png' : 'image/png';
+  let pngBlob = blob;
+  if (blob.type !== 'image/png') {
+    pngBlob = await convertToPngBlob(blob);
+  }
+  await navigator.clipboard.write([new ClipboardItem({ [type]: pngBlob })]);
+  showToast('Image copied to clipboard');
+}
+
+function convertToPngBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.toBlob((pngBlob) => {
+        URL.revokeObjectURL(img.src);
+        pngBlob ? resolve(pngBlob) : reject(new Error('PNG conversion failed'));
+      }, 'image/png');
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Image load failed'));
+    };
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
 function buildClipboardText(item) {
   const parts = [];
   if (item.text) parts.push(item.text);
@@ -196,7 +231,8 @@ function renderItems(items) {
       const safeUrlLabel = item.url
         ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
         : '';
-      const copyButton = item.text || item.url
+      const hasImages = item.files?.some((f) => f?.type?.startsWith('image/') && f.blob);
+      const copyButton = item.text || item.url || hasImages
         ? `<button data-id="${item.id}" data-action="copy" class="ghost">Copy</button>`
         : '';
       li.innerHTML = `
@@ -229,6 +265,11 @@ function renderItems(items) {
           const clipboardText = buildClipboardText(item);
           if (clipboardText) {
             await copyToClipboard(clipboardText);
+          } else {
+            const imageFile = item.files?.find((f) => f?.type?.startsWith('image/') && f.blob);
+            if (imageFile) {
+              await copyImageToClipboard(imageFile.blob);
+            }
           }
           break;
         }
