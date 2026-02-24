@@ -39,7 +39,7 @@ body {
 header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1.25rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -50,23 +50,13 @@ header {
   background: rgba(255, 255, 255, 0.88);
 }
 
-header div {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 header h1 {
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-header p {
-  display: none;
-}
-
-header button#refresh {
+.header-btn {
   width: 34px;
   height: 34px;
   padding: 0;
@@ -76,19 +66,30 @@ header button#refresh {
   background: var(--surface-hover);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  font-size: 0;
+  font-size: 1.2rem;
+  font-weight: 300;
   transition: all 0.15s ease;
+  line-height: 1;
 }
 
-header button#refresh::before {
-  content: '↻';
-  font-size: 1.1rem;
-}
-
-header button#refresh:hover {
+.header-btn:hover {
   background: var(--accent-light);
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.header-btn-danger {
+  font-size: 0.68rem;
+  font-weight: 600;
+  width: auto;
+  padding: 0 0.6rem;
+  color: var(--danger);
+}
+
+.header-btn-danger:hover {
+  background: var(--danger-light);
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* ── Main ── */
@@ -100,23 +101,7 @@ main {
   margin: 0 auto;
 }
 
-/* ── Cards ── */
-.card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border);
-}
 
-.card h2 {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
-  margin-bottom: 0.85rem;
-}
 
 /* ── Form ── */
 label {
@@ -194,61 +179,41 @@ button.ghost:hover {
   color: var(--accent);
 }
 
-/* ── List Header ── */
-.list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.85rem;
-}
-
-.list-header h2 {
-  margin-bottom: 0;
-}
-
-.list-header .ghost {
-  font-size: 0.72rem;
-  color: var(--danger);
-  padding: 0.3rem 0.6rem;
-  border-radius: 6px;
-}
-
-.list-header .ghost:hover {
-  background: var(--danger-light);
-  color: var(--danger);
-}
-
 .search-input {
   width: 100%;
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.85rem;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── Items List ── */
 .items {
   list-style: none;
   display: grid;
-  gap: 0;
+  gap: 0.5rem;
 }
 
 .item {
-  padding: 0.75rem 0.5rem;
+  padding: 0.75rem 0.85rem;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto auto;
   gap: 0.15rem;
   align-items: start;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
   position: relative;
-  transition: background 0.12s ease;
-  border-radius: var(--radius-sm);
-}
-
-.item:last-child {
-  border-bottom: none;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  border-left: 3px solid var(--border);
 }
 
 .item.item-pinned {
-  background: linear-gradient(90deg, var(--pin-light) 0%, transparent 42%);
+  background: var(--pin-light);
+  border-left-color: var(--pin);
 }
 
 .item > div:first-child {
@@ -371,18 +336,8 @@ button.ghost:hover {
 
 .item.item-selected {
   background: var(--accent-light);
-  border-color: rgba(61, 90, 241, 0.15);
-}
-
-.item.item-selected::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--accent);
-  border-radius: 0 3px 3px 0;
+  border-color: rgba(61, 90, 241, 0.2);
+  border-left-color: var(--accent);
 }
 
 /* ── Pin indicator (no action buttons shown inline) ── */
@@ -513,36 +468,7 @@ button.ghost:hover {
   transform: translateX(-50%) translateY(0);
 }
 
-/* ── FAB ── */
-.fab {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 1.6rem;
-  font-weight: 300;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  box-shadow: 0 4px 20px rgba(61, 90, 241, 0.35);
-  z-index: 20;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  line-height: 1;
-}
 
-.fab:hover {
-  transform: scale(1.06);
-  box-shadow: 0 6px 28px rgba(61, 90, 241, 0.45);
-  background: var(--accent-hover);
-}
-
-.fab:active {
-  transform: scale(0.95);
-}
 
 /* ── Modal ── */
 .modal-overlay {
@@ -639,14 +565,6 @@ button.ghost:hover {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-.card {
-  animation: fadeIn 0.3s ease both;
-}
-
-.card:nth-child(2) {
-  animation-delay: 0.08s;
 }
 
 .item {

@@ -10,10 +10,9 @@
   </head>
   <body>
     <header id="header-default">
-      <div>
-        <h1>YCopy</h1>
-      </div>
-      <button id="refresh">Refresh</button>
+      <button id="fab" class="header-btn" aria-label="Add note">+</button>
+      <h1>YCopy</h1>
+      <button id="clear-all" class="header-btn header-btn-danger" aria-label="Clear all">Clear</button>
     </header>
 
     <header id="header-selection" class="header-selection" hidden>
@@ -27,24 +26,16 @@
     </header>
 
     <main>
-      <section class="card">
-        <div class="list-header">
-          <h2>Saved clips</h2>
-          <button id="clear-all" class="ghost">Clear all</button>
-        </div>
-        <input
-          id="search"
-          class="search-input"
-          type="search"
-          placeholder="Search saved clips"
-          aria-label="Search saved clips"
-        />
-        <ul id="items" class="items"></ul>
-        <p id="empty-state" class="empty">No clips yet. Share something from Android or add one here.</p>
-      </section>
+      <input
+        id="search"
+        class="search-input"
+        type="search"
+        placeholder="Search..."
+        aria-label="Search saved clips"
+      />
+      <ul id="items" class="items"></ul>
+      <p id="empty-state" class="empty">No clips yet. Share something from Android or add one here.</p>
     </main>
-
-    <button id="fab" class="fab" aria-label="Add note">+</button>
 
     <div id="modal-overlay" class="modal-overlay" hidden>
       <div class="modal">

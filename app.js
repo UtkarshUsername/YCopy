@@ -5,7 +5,6 @@ const DB_VERSION = 1;
 const form = document.getElementById('add-form');
 const list = document.getElementById('items');
 const emptyState = document.getElementById('empty-state');
-const refreshButton = document.getElementById('refresh');
 const clearAllButton = document.getElementById('clear-all');
 const searchInput = document.getElementById('search');
 const toast = document.getElementById('toast');
@@ -620,7 +619,6 @@ selectionDelete.addEventListener('click', async () => {
   showToast(`Deleted ${count} clip${count > 1 ? 's' : ''}`);
 });
 
-refreshButton.addEventListener('click', loadItems);
 clearAllButton.addEventListener('click', async () => {
   const shouldClear = window.confirm('Clear all saved clips? This cannot be undone.');
   if (!shouldClear) return;
