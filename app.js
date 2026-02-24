@@ -311,23 +311,31 @@ async function handleSharedContent(items) {
     : getLatestItem(items);
   const clipboardText = sharedItem ? buildClipboardText(sharedItem) : '';
 
-  if (!clipboardText) {
-    showToast('Shared content saved');
-    clearSharedParamsFromUrl();
-    return;
-  }
-
   if (!navigator.clipboard) {
     showToast('Shared content saved (clipboard unavailable)');
     clearSharedParamsFromUrl();
     return;
   }
 
-  try {
-    await navigator.clipboard.writeText(clipboardText);
-    showToast('Shared content saved and copied');
-  } catch {
-    showToast('Shared content saved (clipboard blocked)');
+  if (clipboardText) {
+    try {
+      await navigator.clipboard.writeText(clipboardText);
+      showToast('Shared content saved and copied');
+    } catch {
+      showToast('Shared content saved (clipboard blocked)');
+    }
+  } else {
+    const imageFile = sharedItem?.files?.find((f) => f?.type?.startsWith('image/') && f.blob);
+    if (imageFile) {
+      try {
+        await copyImageToClipboard(imageFile.blob);
+        showToast('Shared image saved and copied');
+      } catch {
+        showToast('Shared image saved (clipboard blocked)');
+      }
+    } else {
+      showToast('Shared content saved');
+    }
   }
 
   clearSharedParamsFromUrl();
