@@ -282,6 +282,9 @@ modalOverlay.addEventListener('click', (e) => {
 
 refreshButton.addEventListener('click', loadItems);
 clearAllButton.addEventListener('click', async () => {
+  const shouldClear = window.confirm('Clear all saved clips? This cannot be undone.');
+  if (!shouldClear) return;
+
   await clearItems();
   await loadItems();
   showToast('Cleared all clips');
