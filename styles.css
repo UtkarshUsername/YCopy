@@ -405,6 +405,7 @@ button.ghost:hover {
   pointer-events: none;
   box-shadow: var(--shadow-lg);
   white-space: nowrap;
+  z-index: 200;
 }
 
 .toast.show {
