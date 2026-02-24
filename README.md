@@ -23,7 +23,7 @@ This is a static PWA. You can serve it with any static server.
 
 ```bash
 # Example
-python -m http.server 8080
+python3 -m http.server 8080
 ```
 
 Then open `http://localhost:8080`.
