@@ -30,6 +30,9 @@ let fuseIndex = null;
 let selectedIds = new Set();
 let selectionMode = false;
 let longPressTimer = null;
+let modalOpenCount = 0;
+let lockedScrollY = 0;
+let savedBodyPaddingRight = '';
 const LONG_PRESS_MS = 500;
 
 const MAX_TEXT_LENGTH = 320;
@@ -132,6 +135,71 @@ function formatDate(timestamp) {
   const minutes = String(date.getMinutes()).padStart(2, '0');
 
   return `${day}/${month}/${year} ${hours}:${minutes}`;
+}
+
+function lockBodyScroll() {
+  if (modalOpenCount > 0) {
+    modalOpenCount += 1;
+    return;
+  }
+
+  lockedScrollY = window.scrollY || window.pageYOffset || 0;
+  savedBodyPaddingRight = document.body.style.paddingRight;
+
+  const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+  if (scrollbarWidth > 0) {
+    const computedPaddingRight = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
+    document.body.style.paddingRight = `${computedPaddingRight + scrollbarWidth}px`;
+  }
+
+  document.body.style.top = `-${lockedScrollY}px`;
+  document.body.classList.add('scroll-locked');
+  modalOpenCount = 1;
+}
+
+function unlockBodyScroll() {
+  if (modalOpenCount === 0) return;
+
+  modalOpenCount -= 1;
+  if (modalOpenCount > 0) return;
+
+  document.body.classList.remove('scroll-locked');
+  document.body.style.top = '';
+  document.body.style.paddingRight = savedBodyPaddingRight;
+  window.scrollTo(0, lockedScrollY);
+  savedBodyPaddingRight = '';
+  lockedScrollY = 0;
+}
+
+function openOverlay(overlay) {
+  if (!overlay || !overlay.hidden) return;
+  overlay.hidden = false;
+  lockBodyScroll();
+}
+
+function closeOverlay(overlay) {
+  if (!overlay || overlay.hidden) return;
+  overlay.hidden = true;
+  unlockBodyScroll();
+}
+
+function openAddModal() {
+  openOverlay(modalOverlay);
+  form.querySelector('input, textarea')?.focus();
+}
+
+function closeAddModal() {
+  closeOverlay(modalOverlay);
+}
+
+function openLightbox(src) {
+  lightboxImg.src = src;
+  openOverlay(lightbox);
+}
+
+function closeLightbox() {
+  closeOverlay(lightbox);
+  lightboxImg.src = '';
 }
 
 function showToast(message) {
@@ -544,40 +612,36 @@ form.addEventListener('submit', async (event) => {
     pinnedAt: null,
   });
   form.reset();
-  modalOverlay.hidden = true;
+  closeAddModal();
   await loadItems();
   showToast('Saved clip');
 });
 
 fab.addEventListener('click', () => {
-  modalOverlay.hidden = false;
-  form.querySelector('input, textarea').focus();
+  openAddModal();
 });
 
 modalClose.addEventListener('click', () => {
-  modalOverlay.hidden = true;
+  closeAddModal();
 });
 
 modalOverlay.addEventListener('click', (e) => {
-  if (e.target === modalOverlay) modalOverlay.hidden = true;
+  if (e.target === modalOverlay) closeAddModal();
 });
 
 list.addEventListener('click', (e) => {
   const img = e.target.closest('.img-preview');
   if (!img) return;
-  lightboxImg.src = img.dataset.full;
-  lightbox.hidden = false;
+  openLightbox(img.dataset.full);
 });
 
 lightboxClose.addEventListener('click', () => {
-  lightbox.hidden = true;
-  lightboxImg.src = '';
+  closeLightbox();
 });
 
 lightbox.addEventListener('click', (e) => {
   if (e.target === lightbox) {
-    lightbox.hidden = true;
-    lightboxImg.src = '';
+    closeLightbox();
   }
 });
 

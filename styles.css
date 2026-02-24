@@ -35,6 +35,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body.scroll-locked {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
 /* ── Header ── */
 header {
   background: var(--surface);
@@ -398,6 +406,8 @@ button.ghost:hover {
   display: grid;
   place-items: center;
   padding: 1rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: overlayIn 0.2s ease;
 }
 
@@ -491,6 +501,8 @@ button.ghost:hover {
   display: grid;
   place-items: center;
   padding: 1rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: overlayIn 0.2s ease;
 }
 
@@ -504,6 +516,9 @@ button.ghost:hover {
   padding: 1.5rem;
   width: 100%;
   max-width: 400px;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: var(--shadow-lg);
   animation: modalIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid var(--border);
