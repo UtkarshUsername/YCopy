@@ -1,6 +1,6 @@
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 

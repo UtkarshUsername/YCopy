@@ -131,10 +131,13 @@ function formatDate(timestamp) {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
+  let hourValue = date.getHours();
+  const meridiem = hourValue >= 12 ? 'PM' : 'AM';
+  hourValue = hourValue % 12 || 12;
+  const hours = String(hourValue).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
 
-  return `${day}/${month}/${year} ${hours}:${minutes}`;
+  return `${day}/${month}/${year} ${hours}:${minutes} ${meridiem}`;
 }
 
 function lockBodyScroll() {
