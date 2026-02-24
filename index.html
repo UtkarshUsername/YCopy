@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>YCopy</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=2" />
+    <link rel="stylesheet" href="styles.css?v=3" />
     <meta name="theme-color" content="#1b1f3b" />
   </head>
   <body>
@@ -19,7 +19,23 @@
 
     <main>
       <section class="card">
-        <h2>Add note</h2>
+        <div class="list-header">
+          <h2>Saved clips</h2>
+          <button id="clear-all" class="ghost">Clear all</button>
+        </div>
+        <ul id="items" class="items"></ul>
+        <p id="empty-state" class="empty">No clips yet. Share something from Android or add one here.</p>
+      </section>
+    </main>
+
+    <button id="fab" class="fab" aria-label="Add note">+</button>
+
+    <div id="modal-overlay" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Add note</h2>
+          <button id="modal-close" class="modal-close" aria-label="Close">✕</button>
+        </div>
         <form id="add-form">
           <label>
             Text
@@ -31,17 +47,8 @@
           </label>
           <button type="submit">Save</button>
         </form>
-      </section>
-
-      <section class="card">
-        <div class="list-header">
-          <h2>Saved clips</h2>
-          <button id="clear-all" class="ghost">Clear all</button>
-        </div>
-        <ul id="items" class="items"></ul>
-        <p id="empty-state" class="empty">No clips yet. Share something from Android or add one here.</p>
-      </section>
-    </main>
+      </div>
+    </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 

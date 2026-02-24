@@ -8,6 +8,9 @@ const emptyState = document.getElementById('empty-state');
 const refreshButton = document.getElementById('refresh');
 const clearAllButton = document.getElementById('clear-all');
 const toast = document.getElementById('toast');
+const fab = document.getElementById('fab');
+const modalOverlay = document.getElementById('modal-overlay');
+const modalClose = document.getElementById('modal-close');
 
 let activeObjectUrls = [];
 let itemsById = new Map();
@@ -259,8 +262,22 @@ form.addEventListener('submit', async (event) => {
     files: [],
   });
   form.reset();
+  modalOverlay.hidden = true;
   await loadItems();
   showToast('Saved clip');
+});
+
+fab.addEventListener('click', () => {
+  modalOverlay.hidden = false;
+  form.querySelector('input, textarea').focus();
+});
+
+modalClose.addEventListener('click', () => {
+  modalOverlay.hidden = true;
+});
+
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) modalOverlay.hidden = true;
 });
 
 refreshButton.addEventListener('click', loadItems);
