@@ -940,7 +940,9 @@ if ('serviceWorker' in navigator) {
 
   window.addEventListener('load', async () => {
     try {
-      const registration = await navigator.serviceWorker.register('service-worker.js');
+      const registration = await navigator.serviceWorker.register('service-worker.js', {
+        updateViaCache: 'none',
+      });
 
       // Force an update check at startup to pick up new deployments quickly.
       await registration.update();

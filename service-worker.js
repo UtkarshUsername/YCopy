@@ -1,6 +1,6 @@
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v19';
+const CACHE_VERSION = 'v20';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
@@ -24,7 +24,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     // Pre-cache core assets for reliable startup.
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_ASSETS);
+    await cache.addAll(CORE_ASSETS.map((asset) => new Request(asset, { cache: 'reload' })));
 
     // Activate the new worker as soon as install completes.
     await self.skipWaiting();
