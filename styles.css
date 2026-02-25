@@ -471,10 +471,52 @@ button.ghost:hover {
 
 /* ── Empty State ── */
 .empty {
+  border: 1px dashed var(--border);
+  background: linear-gradient(180deg, #ffffff, #f6f8ff);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  padding: 1.1rem 1rem;
+}
+
+.empty-default {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.empty-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.empty-subtitle {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.empty-steps {
+  padding-left: 1.1rem;
+  margin: 0.1rem 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.empty-steps li {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.empty-tip {
+  font-size: 0.78rem;
+  color: #8a90b2;
+}
+
+.empty-search {
   text-align: center;
   color: var(--text-secondary);
   font-size: 0.84rem;
-  padding: 2rem 1rem;
+  padding: 1.2rem 0.75rem;
 }
 
 /* ── Toast ── */

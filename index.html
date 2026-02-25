@@ -41,7 +41,19 @@
 
     <main>
       <ul id="items" class="items"></ul>
-      <p id="empty-state" class="empty">No clips yet. Share something from Android or add one here.</p>
+      <section id="empty-state" class="empty" aria-live="polite">
+        <div class="empty-default" data-empty-default>
+          <p class="empty-title">Save, then copy in one tap</p>
+          <p class="empty-subtitle">How it works:</p>
+          <ol class="empty-steps">
+            <li><strong>Save a clip</strong>: tap <strong>+</strong> or share to <strong>YCopy</strong>.</li>
+            <li><strong>Copy it back</strong>: tap a saved clip to copy to your clipboard.</li>
+            <li><strong>Organize</strong>: long-press to select multiple, then pin/share/delete.</li>
+          </ol>
+          <p class="empty-tip">Tip: use Search to filter fast.</p>
+        </div>
+        <p class="empty-search" data-empty-search hidden></p>
+      </section>
     </main>
 
     <div id="modal-overlay" class="modal-overlay" hidden>

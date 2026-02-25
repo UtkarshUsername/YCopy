@@ -22,6 +22,8 @@ const selectionPin = document.getElementById('selection-pin');
 const selectionCopy = document.getElementById('selection-copy');
 const selectionShare = document.getElementById('selection-share');
 const selectionDelete = document.getElementById('selection-delete');
+const emptyStateDefault = emptyState?.querySelector('[data-empty-default]');
+const emptyStateSearch = emptyState?.querySelector('[data-empty-search]');
 const supportsNativeShare = typeof navigator.share === 'function';
 
 let activeObjectUrls = [];
@@ -40,7 +42,7 @@ const LONG_PRESS_MS = 500;
 const MAX_TEXT_LENGTH = 320;
 const MAX_URL_LENGTH = 88;
 const MAX_FILE_NAME_LENGTH = 56;
-const EMPTY_STATE_TEXT = emptyState.textContent;
+const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YCopy.';
 
 function escapeHtml(value = '') {
   return value
@@ -512,6 +514,25 @@ function cancelLongPress() {
   }
 }
 
+function showEmptyState(query = '') {
+  const trimmedQuery = query.trim();
+  const hasQuery = Boolean(trimmedQuery);
+  emptyState.style.display = 'block';
+
+  if (emptyStateDefault && emptyStateSearch) {
+    emptyStateDefault.hidden = hasQuery;
+    emptyStateSearch.hidden = !hasQuery;
+    emptyStateSearch.textContent = hasQuery
+      ? `No clips match "${truncateText(trimmedQuery, 48)}".`
+      : '';
+    return;
+  }
+
+  emptyState.textContent = hasQuery
+    ? `No clips match "${truncateText(trimmedQuery, 48)}".`
+    : EMPTY_STATE_FALLBACK_TEXT;
+}
+
 function renderItems(items, query = '') {
   clearObjectUrls();
   list.innerHTML = '';
@@ -519,17 +540,18 @@ function renderItems(items, query = '') {
   itemsById = new Map(sortedItems.map((item) => [item.id, item]));
 
   if (!sortedItems.length) {
-    emptyState.style.display = 'block';
-    if (query.trim()) {
-      emptyState.textContent = `No clips match "${truncateText(query.trim(), 48)}".`;
-    } else {
-      emptyState.textContent = EMPTY_STATE_TEXT;
-    }
+    showEmptyState(query);
     updateClearAllVisibility();
     return;
   }
   emptyState.style.display = 'none';
-  emptyState.textContent = EMPTY_STATE_TEXT;
+  if (emptyStateDefault) {
+    emptyStateDefault.hidden = false;
+  }
+  if (emptyStateSearch) {
+    emptyStateSearch.hidden = true;
+    emptyStateSearch.textContent = '';
+  }
   updateClearAllVisibility();
 
   sortedItems.forEach((item) => {
