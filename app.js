@@ -43,7 +43,7 @@ let appliedBodyPaddingRight = false;
 const LONG_PRESS_MS = 500;
 
 const MAX_TEXT_LENGTH = 320;
-const MAX_URL_LENGTH = 88;
+const MAX_URL_LENGTH = 56;
 const MAX_FILE_NAME_LENGTH = 56;
 const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YCopy.';
 
@@ -619,7 +619,7 @@ function renderItems(items, query = '', filterSummary = '') {
     const safeTextFull = item.text ? escapeHtml(item.text) : '';
     const safeUrl = item.url ? escapeHtml(item.url) : '';
     const safeUrlLabel = item.url
-      ? escapeHtml(truncateMiddle(item.url, MAX_URL_LENGTH))
+      ? escapeHtml(truncateText(item.url, MAX_URL_LENGTH))
       : '';
     li.innerHTML = `
         ${item.text ? `<p class="item-text" title="${safeTextFull}">${safeText}</p>` : ''}
