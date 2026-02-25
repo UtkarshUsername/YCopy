@@ -1,6 +1,6 @@
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v20';
+const CACHE_VERSION = 'v21';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
@@ -163,20 +163,8 @@ async function networkFirst(request) {
   } catch {
     const cached = await cache.match(request);
     if (cached) return cached;
-    throw new Error('Network unavailable and no cached HTML response found.');
+    throw new Error('Network unavailable and no cached response found.');
   }
-}
-
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  const response = await fetch(request);
-  if (isCacheableResponse(response)) {
-    await cache.put(request, response.clone());
-  }
-  return response;
 }
 
 self.addEventListener('fetch', (event) => {
@@ -207,6 +195,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Never intercept the SW script request itself.
+  if (url.pathname.endsWith('/service-worker.js')) {
+    return;
+  }
+
   if (isHtmlRequest(event.request, url)) {
     // HTML is network-first so deploys are picked up immediately.
     event.respondWith(networkFirst(event.request));
@@ -214,7 +207,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (isStaticAssetRequest(event.request, url)) {
-    // Static assets are cache-first for speed and offline resilience.
-    event.respondWith(cacheFirst(event.request));
+    // Static assets are network-first to avoid stale bundles after deploy.
+    event.respondWith(networkFirst(event.request));
   }
 });
