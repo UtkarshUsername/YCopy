@@ -7,6 +7,7 @@ const list = document.getElementById('items');
 const emptyState = document.getElementById('empty-state');
 const clearAllButton = document.getElementById('clear-all');
 const searchInput = document.getElementById('search');
+const searchFilters = document.getElementById('search-filters');
 const toast = document.getElementById('toast');
 const fab = document.getElementById('fab');
 const modalOverlay = document.getElementById('modal-overlay');
@@ -30,6 +31,7 @@ let activeObjectUrls = [];
 let itemsById = new Map();
 let allItems = [];
 let currentSearchQuery = '';
+let currentSearchFilters = new Set(['all']);
 let fuseIndex = null;
 let selectedIds = new Set();
 let selectionMode = false;
@@ -426,22 +428,58 @@ function rebuildSearchIndex(items = []) {
   });
 }
 
-function filterItems(items = [], query = '') {
-  const normalizedQuery = query.trim();
-  if (!normalizedQuery) return items;
+function isAllFilterActive(filters) {
+  return !filters || filters.size === 0 || filters.has('all');
+}
 
-  if (fuseIndex) {
-    return fuseIndex.search(normalizedQuery).map((result) => result.item);
+function itemMatchesSearchFilters(item, filters) {
+  if (isAllFilterActive(filters)) return true;
+  const hasText = Boolean(item?.text && item.text.trim());
+  const hasLink = Boolean(item?.url && item.url.trim());
+  const hasFiles = Array.isArray(item?.files) && item.files.length > 0;
+  const hasImages = hasFiles && item.files.some((file) => {
+    const type = file?.type || file?.blob?.type || '';
+    return typeof type === 'string' && type.startsWith('image/');
+  });
+
+  if (filters.has('text') && hasText) return true;
+  if (filters.has('link') && hasLink) return true;
+  if (filters.has('file') && hasFiles) return true;
+  if (filters.has('image') && hasImages) return true;
+  return false;
+}
+
+function getFilterSummary(filters) {
+  if (isAllFilterActive(filters)) return '';
+  const labels = [];
+  if (filters.has('text')) labels.push('Text');
+  if (filters.has('link')) labels.push('Link');
+  if (filters.has('file')) labels.push('File');
+  if (filters.has('image')) labels.push('Image');
+  return labels.join(', ');
+}
+
+function filterItems(items = [], query = '', filters = currentSearchFilters) {
+  const normalizedQuery = query.trim();
+  let results = items;
+
+  if (normalizedQuery) {
+    if (fuseIndex) {
+      results = fuseIndex.search(normalizedQuery).map((result) => result.item);
+    } else {
+      const needle = normalizedQuery.toLowerCase();
+      results = items.filter((item) => {
+        const fileText = (item.files || [])
+          .map((file) => `${file?.name || ''} ${file?.type || ''}`)
+          .join(' ');
+        const haystack = `${item.text || ''}\n${item.url || ''}\n${fileText}`.toLowerCase();
+        return haystack.includes(needle);
+      });
+    }
   }
 
-  const needle = normalizedQuery.toLowerCase();
-  return items.filter((item) => {
-    const fileText = (item.files || [])
-      .map((file) => `${file?.name || ''} ${file?.type || ''}`)
-      .join(' ');
-    const haystack = `${item.text || ''}\n${item.url || ''}\n${fileText}`.toLowerCase();
-    return haystack.includes(needle);
-  });
+  if (isAllFilterActive(filters)) return results;
+  return results.filter((item) => itemMatchesSearchFilters(item, filters));
 }
 
 function enterSelectionMode(id) {
@@ -492,7 +530,9 @@ function configureSelectionShareButton() {
 }
 
 function updateClearAllVisibility() {
-  clearAllButton.style.display = (allItems.length === 0 || currentSearchQuery.trim()) ? 'none' : '';
+  clearAllButton.style.display = (allItems.length === 0 || currentSearchQuery.trim() || !isAllFilterActive(currentSearchFilters))
+    ? 'none'
+    : '';
 }
 
 async function copyItemToClipboard(item) {
@@ -514,33 +554,38 @@ function cancelLongPress() {
   }
 }
 
-function showEmptyState(query = '') {
+function showEmptyState(query = '', filterSummary = '') {
   const trimmedQuery = query.trim();
   const hasQuery = Boolean(trimmedQuery);
+  const hasFilters = Boolean(filterSummary);
   emptyState.style.display = 'block';
 
   if (emptyStateDefault && emptyStateSearch) {
-    emptyStateDefault.hidden = hasQuery;
-    emptyStateSearch.hidden = !hasQuery;
+    emptyStateDefault.hidden = hasQuery || hasFilters;
+    emptyStateSearch.hidden = !(hasQuery || hasFilters);
     emptyStateSearch.textContent = hasQuery
       ? `No clips match "${truncateText(trimmedQuery, 48)}".`
+      : hasFilters
+        ? `No clips match filters: ${filterSummary}.`
       : '';
     return;
   }
 
   emptyState.textContent = hasQuery
     ? `No clips match "${truncateText(trimmedQuery, 48)}".`
+    : hasFilters
+      ? `No clips match filters: ${filterSummary}.`
     : EMPTY_STATE_FALLBACK_TEXT;
 }
 
-function renderItems(items, query = '') {
+function renderItems(items, query = '', filterSummary = '') {
   clearObjectUrls();
   list.innerHTML = '';
   const sortedItems = sortItemsForDisplay(items);
   itemsById = new Map(sortedItems.map((item) => [item.id, item]));
 
   if (!sortedItems.length) {
-    showEmptyState(query);
+    showEmptyState(query, filterSummary);
     updateClearAllVisibility();
     return;
   }
@@ -638,8 +683,8 @@ function renderItems(items, query = '') {
 }
 
 function renderFilteredItems() {
-  const filteredItems = filterItems(allItems, currentSearchQuery);
-  renderItems(filteredItems, currentSearchQuery);
+  const filteredItems = filterItems(allItems, currentSearchQuery, currentSearchFilters);
+  renderItems(filteredItems, currentSearchQuery, getFilterSummary(currentSearchFilters));
 }
 
 async function loadItems() {
@@ -845,6 +890,43 @@ if (searchInput) {
     currentSearchQuery = searchInput.value;
     renderFilteredItems();
   });
+}
+
+function syncSearchFilterChips() {
+  if (!searchFilters) return;
+  const allActive = isAllFilterActive(currentSearchFilters);
+  searchFilters.querySelectorAll('[data-filter]').forEach((el) => {
+    const key = el.dataset.filter;
+    const isActive = key === 'all' ? allActive : (!allActive && currentSearchFilters.has(key));
+    el.classList.toggle('is-active', isActive);
+    el.setAttribute('aria-pressed', String(isActive));
+  });
+}
+
+if (searchFilters) {
+  searchFilters.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-filter]');
+    if (!button) return;
+    const key = button.dataset.filter;
+    if (!key) return;
+
+    if (key === 'all') {
+      currentSearchFilters = new Set(['all']);
+    } else {
+      if (currentSearchFilters.has('all')) currentSearchFilters.delete('all');
+      if (currentSearchFilters.has(key)) {
+        currentSearchFilters.delete(key);
+      } else {
+        currentSearchFilters.add(key);
+      }
+      if (currentSearchFilters.size === 0) currentSearchFilters.add('all');
+    }
+
+    syncSearchFilterChips();
+    renderFilteredItems();
+  });
+
+  syncSearchFilterChips();
 }
 
 configureSelectionShareButton();
