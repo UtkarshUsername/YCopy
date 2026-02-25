@@ -39,6 +39,7 @@ let longPressTimer = null;
 let modalOpenCount = 0;
 let lockedScrollY = 0;
 let savedBodyPaddingRight = '';
+let appliedBodyPaddingRight = false;
 const LONG_PRESS_MS = 500;
 
 const MAX_TEXT_LENGTH = 320;
@@ -154,11 +155,17 @@ function lockBodyScroll() {
 
   lockedScrollY = window.scrollY || window.pageYOffset || 0;
   savedBodyPaddingRight = document.body.style.paddingRight;
+  appliedBodyPaddingRight = false;
 
+  // Desktop browsers with persistent scrollbars need compensation to prevent
+  // layout shift; touch devices typically do not, and can misreport very wide
+  // values that create a visible right-side gutter.
   const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-  if (scrollbarWidth > 0) {
+  const shouldCompensateScrollbar = window.matchMedia('(pointer: fine)').matches && scrollbarWidth > 0 && scrollbarWidth <= 64;
+  if (shouldCompensateScrollbar) {
     const computedPaddingRight = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
     document.body.style.paddingRight = `${computedPaddingRight + scrollbarWidth}px`;
+    appliedBodyPaddingRight = true;
   }
 
   document.body.style.top = `-${lockedScrollY}px`;
@@ -174,9 +181,12 @@ function unlockBodyScroll() {
 
   document.body.classList.remove('scroll-locked');
   document.body.style.top = '';
-  document.body.style.paddingRight = savedBodyPaddingRight;
+  if (appliedBodyPaddingRight) {
+    document.body.style.paddingRight = savedBodyPaddingRight;
+  }
   window.scrollTo(0, lockedScrollY);
   savedBodyPaddingRight = '';
+  appliedBodyPaddingRight = false;
   lockedScrollY = 0;
 }
 
