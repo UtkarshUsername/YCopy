@@ -31,7 +31,7 @@ let activeObjectUrls = [];
 let itemsById = new Map();
 let allItems = [];
 let currentSearchQuery = '';
-let currentSearchFilters = new Set(['all']);
+let currentSearchFilter = 'all';
 let fuseIndex = null;
 let selectedIds = new Set();
 let selectionMode = false;
@@ -428,12 +428,12 @@ function rebuildSearchIndex(items = []) {
   });
 }
 
-function isAllFilterActive(filters) {
-  return !filters || filters.size === 0 || filters.has('all');
+function isAllFilterActive(filter) {
+  return !filter || filter === 'all';
 }
 
-function itemMatchesSearchFilters(item, filters) {
-  if (isAllFilterActive(filters)) return true;
+function itemMatchesSearchFilter(item, filter) {
+  if (isAllFilterActive(filter)) return true;
   const hasText = Boolean(item?.text && item.text.trim());
   const hasLink = Boolean(item?.url && item.url.trim());
   const hasFiles = Array.isArray(item?.files) && item.files.length > 0;
@@ -442,24 +442,23 @@ function itemMatchesSearchFilters(item, filters) {
     return typeof type === 'string' && type.startsWith('image/');
   });
 
-  if (filters.has('text') && hasText) return true;
-  if (filters.has('link') && hasLink) return true;
-  if (filters.has('file') && hasFiles) return true;
-  if (filters.has('image') && hasImages) return true;
-  return false;
+  if (filter === 'text') return hasText;
+  if (filter === 'link') return hasLink;
+  if (filter === 'file') return hasFiles;
+  if (filter === 'image') return hasImages;
+  return true;
 }
 
-function getFilterSummary(filters) {
-  if (isAllFilterActive(filters)) return '';
-  const labels = [];
-  if (filters.has('text')) labels.push('Text');
-  if (filters.has('link')) labels.push('Link');
-  if (filters.has('file')) labels.push('File');
-  if (filters.has('image')) labels.push('Image');
-  return labels.join(', ');
+function getFilterSummary(filter) {
+  if (isAllFilterActive(filter)) return '';
+  if (filter === 'text') return 'Text';
+  if (filter === 'link') return 'Link';
+  if (filter === 'file') return 'File';
+  if (filter === 'image') return 'Image';
+  return '';
 }
 
-function filterItems(items = [], query = '', filters = currentSearchFilters) {
+function filterItems(items = [], query = '', filter = currentSearchFilter) {
   const normalizedQuery = query.trim();
   let results = items;
 
@@ -478,8 +477,8 @@ function filterItems(items = [], query = '', filters = currentSearchFilters) {
     }
   }
 
-  if (isAllFilterActive(filters)) return results;
-  return results.filter((item) => itemMatchesSearchFilters(item, filters));
+  if (isAllFilterActive(filter)) return results;
+  return results.filter((item) => itemMatchesSearchFilter(item, filter));
 }
 
 function enterSelectionMode(id) {
@@ -530,7 +529,7 @@ function configureSelectionShareButton() {
 }
 
 function updateClearAllVisibility() {
-  clearAllButton.style.display = (allItems.length === 0 || currentSearchQuery.trim() || !isAllFilterActive(currentSearchFilters))
+  clearAllButton.style.display = (allItems.length === 0 || currentSearchQuery.trim() || !isAllFilterActive(currentSearchFilter))
     ? 'none'
     : '';
 }
@@ -566,7 +565,7 @@ function showEmptyState(query = '', filterSummary = '') {
     emptyStateSearch.textContent = hasQuery
       ? `No clips match "${truncateText(trimmedQuery, 48)}".`
       : hasFilters
-        ? `No clips match filters: ${filterSummary}.`
+        ? `No clips match filter: ${filterSummary}.`
       : '';
     return;
   }
@@ -574,7 +573,7 @@ function showEmptyState(query = '', filterSummary = '') {
   emptyState.textContent = hasQuery
     ? `No clips match "${truncateText(trimmedQuery, 48)}".`
     : hasFilters
-      ? `No clips match filters: ${filterSummary}.`
+      ? `No clips match filter: ${filterSummary}.`
     : EMPTY_STATE_FALLBACK_TEXT;
 }
 
@@ -683,8 +682,8 @@ function renderItems(items, query = '', filterSummary = '') {
 }
 
 function renderFilteredItems() {
-  const filteredItems = filterItems(allItems, currentSearchQuery, currentSearchFilters);
-  renderItems(filteredItems, currentSearchQuery, getFilterSummary(currentSearchFilters));
+  const filteredItems = filterItems(allItems, currentSearchQuery, currentSearchFilter);
+  renderItems(filteredItems, currentSearchQuery, getFilterSummary(currentSearchFilter));
 }
 
 async function loadItems() {
@@ -894,10 +893,9 @@ if (searchInput) {
 
 function syncSearchFilterChips() {
   if (!searchFilters) return;
-  const allActive = isAllFilterActive(currentSearchFilters);
   searchFilters.querySelectorAll('[data-filter]').forEach((el) => {
     const key = el.dataset.filter;
-    const isActive = key === 'all' ? allActive : (!allActive && currentSearchFilters.has(key));
+    const isActive = key === currentSearchFilter;
     el.classList.toggle('is-active', isActive);
     el.setAttribute('aria-pressed', String(isActive));
   });
@@ -910,18 +908,7 @@ if (searchFilters) {
     const key = button.dataset.filter;
     if (!key) return;
 
-    if (key === 'all') {
-      currentSearchFilters = new Set(['all']);
-    } else {
-      if (currentSearchFilters.has('all')) currentSearchFilters.delete('all');
-      if (currentSearchFilters.has(key)) {
-        currentSearchFilters.delete(key);
-      } else {
-        currentSearchFilters.add(key);
-      }
-      if (currentSearchFilters.size === 0) currentSearchFilters.add('all');
-    }
-
+    currentSearchFilter = key;
     syncSearchFilterChips();
     renderFilteredItems();
   });
