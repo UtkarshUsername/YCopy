@@ -20,6 +20,7 @@ const selectionCount = document.getElementById('selection-count');
 const selectionClose = document.getElementById('selection-close');
 const selectionPin = document.getElementById('selection-pin');
 const selectionCopy = document.getElementById('selection-copy');
+const selectionShare = document.getElementById('selection-share');
 const selectionDelete = document.getElementById('selection-delete');
 
 let activeObjectUrls = [];
@@ -305,6 +306,81 @@ function buildClipboardText(item) {
   if (item.text) parts.push(item.text);
   if (item.url) parts.push(item.url);
   return parts.join('\n');
+}
+
+function buildCombinedClipboardText(items = []) {
+  return items
+    .map((item) => buildClipboardText(item))
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function normalizeShareUrl(value = '') {
+  if (!value) return '';
+  try {
+    return new URL(value).toString();
+  } catch {
+    return '';
+  }
+}
+
+function createShareFiles(files = []) {
+  return files
+    .filter((file) => file?.blob)
+    .map((file, index) => {
+      const blob = file.blob;
+      const type = file.type || blob.type || 'application/octet-stream';
+      const name = file.name || `attachment-${index + 1}`;
+      return new File([blob], name, { type, lastModified: Date.now() });
+    });
+}
+
+async function shareItems(items = []) {
+  if (!items.length || !navigator.share) return 'unsupported';
+
+  const combinedText = buildCombinedClipboardText(items);
+  const shareData = {
+    title: items.length === 1 ? 'YCopy clip' : `${items.length} YCopy clips`,
+  };
+
+  if (combinedText) shareData.text = combinedText;
+
+  if (items.length === 1) {
+    const shareUrl = normalizeShareUrl(items[0]?.url || '');
+    if (shareUrl) shareData.url = shareUrl;
+
+    const shareFiles = createShareFiles(items[0]?.files || []);
+    if (shareFiles.length && navigator.canShare?.({ files: shareFiles })) {
+      shareData.files = shareFiles;
+    }
+  }
+
+  const hasPayload = Boolean(shareData.text || shareData.url || (shareData.files && shareData.files.length));
+  if (!hasPayload) return 'unsupported';
+
+  try {
+    await navigator.share(shareData);
+    return 'shared';
+  } catch (error) {
+    if (error?.name === 'AbortError') return 'cancelled';
+    return 'unsupported';
+  }
+}
+
+async function copyForShareFallback(text) {
+  if (!text) return 'empty';
+  if (!navigator.clipboard) {
+    showToast('Sharing unavailable on this device');
+    return 'unavailable';
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Sharing unavailable, copied instead');
+    return 'copied';
+  } catch {
+    showToast('Sharing unavailable');
+    return 'unavailable';
+  }
 }
 
 function getPinnedTimestamp(item) {
@@ -678,6 +754,35 @@ selectionCopy.addEventListener('click', async () => {
     await copyToClipboard(texts.join('\n\n'));
   }
   exitSelectionMode();
+});
+
+selectionShare.addEventListener('click', async () => {
+  const ids = [...selectedIds];
+  const items = ids
+    .map((id) => itemsById.get(id))
+    .filter(Boolean);
+  if (!items.length) return;
+
+  const status = await shareItems(items);
+  if (status === 'shared') {
+    exitSelectionMode();
+    showToast(items.length === 1 ? 'Shared clip' : `Shared ${items.length} clips`);
+    return;
+  }
+  if (status === 'cancelled') {
+    return;
+  }
+
+  const fallbackText = buildCombinedClipboardText(items);
+  const fallbackStatus = await copyForShareFallback(fallbackText);
+  if (fallbackStatus === 'copied') {
+    exitSelectionMode();
+    return;
+  }
+
+  if (fallbackStatus === 'empty') {
+    showToast('Nothing shareable in selection');
+  }
 });
 
 selectionDelete.addEventListener('click', async () => {
