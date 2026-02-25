@@ -539,9 +539,8 @@ function configureSelectionShareButton() {
 }
 
 function updateClearAllVisibility() {
-  clearAllButton.style.display = (allItems.length === 0 || currentSearchQuery.trim() || !isAllFilterActive(currentSearchFilter))
-    ? 'none'
-    : '';
+  const shouldHide = allItems.length === 0 || currentSearchQuery.trim() || !isAllFilterActive(currentSearchFilter);
+  clearAllButton.classList.toggle('header-btn-hidden', shouldHide);
 }
 
 async function copyItemToClipboard(item) {
