@@ -22,6 +22,7 @@ const selectionPin = document.getElementById('selection-pin');
 const selectionCopy = document.getElementById('selection-copy');
 const selectionShare = document.getElementById('selection-share');
 const selectionDelete = document.getElementById('selection-delete');
+const supportsNativeShare = typeof navigator.share === 'function';
 
 let activeObjectUrls = [];
 let itemsById = new Map();
@@ -478,6 +479,16 @@ function updateSelectionUI() {
   });
 }
 
+function configureSelectionShareButton() {
+  if (!selectionShare) return;
+  selectionShare.disabled = !supportsNativeShare;
+  if (!supportsNativeShare) {
+    selectionShare.title = 'Share is not supported on this device';
+  } else {
+    selectionShare.title = '';
+  }
+}
+
 function updateClearAllVisibility() {
   clearAllButton.style.display = (allItems.length === 0 || currentSearchQuery.trim()) ? 'none' : '';
 }
@@ -813,6 +824,8 @@ if (searchInput) {
     renderFilteredItems();
   });
 }
+
+configureSelectionShareButton();
 
 if ('serviceWorker' in navigator) {
   let hasRefreshedForNewWorker = false;
