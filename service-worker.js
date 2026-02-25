@@ -1,6 +1,6 @@
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
@@ -57,9 +57,44 @@ function openDb() {
   });
 }
 
+function normalizeShareUrlCandidate(value = '') {
+  const raw = value?.toString().trim();
+  if (!raw) return '';
+
+  let candidate = raw;
+  candidate = candidate.replace(/^<+/, '').replace(/>+$/, '');
+  candidate = candidate.replace(/^"+/, '').replace(/"+$/, '');
+  candidate = candidate.replace(/^'+/, '').replace(/'+$/, '');
+  candidate = candidate.replace(/[)\]}>'".,!?;:]+$/g, '');
+
+  if (/^www\./i.test(candidate)) {
+    candidate = `https://${candidate}`;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
 async function saveShare(formData) {
-  const text = formData.get('text')?.toString().trim();
-  const url = formData.get('url')?.toString().trim();
+  let text = formData.get('text')?.toString().trim() || '';
+  let url = normalizeShareUrlCandidate(formData.get('url')?.toString().trim() || '');
+
+  // Only promote text -> url when the shared text is only a URL.
+  if (!url && text) {
+    const detectedUrl = normalizeShareUrlCandidate(text);
+    if (detectedUrl) {
+      url = detectedUrl;
+      text = '';
+    }
+  } else if (url && text === url) {
+    text = '';
+  }
+
   const files = formData.getAll('files').map((file) => ({
     name: file.name,
     type: file.type,
