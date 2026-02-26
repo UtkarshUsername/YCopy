@@ -17,6 +17,7 @@ const settingsOverlay = document.getElementById('settings-overlay');
 const settingsClose = document.getElementById('settings-close');
 const settingsForm = document.getElementById('settings-form');
 const expiryDurationSelect = document.getElementById('expiry-duration');
+const maxEntriesInput = document.getElementById('max-entries');
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
 const lightboxClose = document.getElementById('lightbox-close');
@@ -55,6 +56,9 @@ const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YC
 const DAY_IN_MS = 86400000;
 const SETTINGS_STORAGE_KEY = 'ycopy-settings';
 const AUTO_EXPIRE_DISABLED_MS = 0;
+const MAX_ENTRIES_UNLIMITED = 0;
+const MAX_ENTRIES_MIN = 0;
+const MAX_ENTRIES_MAX = 500;
 const AUTO_EXPIRE_OPTIONS_MS = [
   AUTO_EXPIRE_DISABLED_MS,
   DAY_IN_MS,
@@ -75,10 +79,12 @@ const AUTO_EXPIRE_LABELS = {
 };
 const DEFAULT_SETTINGS = Object.freeze({
   autoExpireMs: AUTO_EXPIRE_DISABLED_MS,
+  maxEntries: MAX_ENTRIES_UNLIMITED,
 });
 let appSettings = { ...DEFAULT_SETTINGS };
 let autoExpireIntervalId = null;
 let autoExpireInProgress = false;
+let maxEntriesPruneInProgress = false;
 
 function syncSearchStickyOffset() {
   const activeHeader = headerSelection && !headerSelection.hidden
@@ -123,6 +129,14 @@ function normalizeAutoExpireMs(value) {
   return AUTO_EXPIRE_OPTIONS_MS.includes(numericValue) ? numericValue : DEFAULT_SETTINGS.autoExpireMs;
 }
 
+function normalizeMaxEntries(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return DEFAULT_SETTINGS.maxEntries;
+  const rounded = Math.floor(numericValue);
+  if (rounded <= MAX_ENTRIES_MIN) return MAX_ENTRIES_UNLIMITED;
+  return Math.min(rounded, MAX_ENTRIES_MAX);
+}
+
 function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -130,6 +144,7 @@ function loadSettings() {
     const parsed = JSON.parse(raw);
     return {
       autoExpireMs: normalizeAutoExpireMs(parsed?.autoExpireMs),
+      maxEntries: normalizeMaxEntries(parsed?.maxEntries),
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -151,10 +166,17 @@ function getAutoExpireLabel(autoExpireMs = appSettings.autoExpireMs) {
 function syncSettingsForm() {
   if (!expiryDurationSelect) return;
   expiryDurationSelect.value = String(appSettings.autoExpireMs);
+  if (maxEntriesInput) {
+    maxEntriesInput.value = String(appSettings.maxEntries);
+  }
 }
 
 function getClipCountLabel(count) {
   return `${count} clip${count === 1 ? '' : 's'}`;
+}
+
+function getMaxEntriesLabel(maxEntries = appSettings.maxEntries) {
+  return maxEntries === MAX_ENTRIES_UNLIMITED ? 'Unlimited' : `${maxEntries}`;
 }
 
 function getExpiryStatusLabel(item, now = Date.now()) {
@@ -355,6 +377,39 @@ async function pruneExpiredItems() {
     return expiredIds.length;
   } finally {
     autoExpireInProgress = false;
+  }
+}
+
+function getOverflowItemsToDelete(items = []) {
+  const maxEntries = appSettings.maxEntries;
+  if (maxEntries <= MAX_ENTRIES_UNLIMITED) return [];
+  if (items.length <= maxEntries) return [];
+  const overflow = items.length - maxEntries;
+  return [...items]
+    .sort((a, b) => {
+      const aCreatedAt = Number.isFinite(a?.createdAt) ? a.createdAt : 0;
+      const bCreatedAt = Number.isFinite(b?.createdAt) ? b.createdAt : 0;
+      if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt;
+      return (Number(a?.id) || 0) - (Number(b?.id) || 0);
+    })
+    .slice(0, overflow)
+    .map((item) => item.id)
+    .filter((id) => Number.isFinite(id));
+}
+
+async function pruneItemsOverLimit() {
+  if (maxEntriesPruneInProgress) return 0;
+  if (appSettings.maxEntries <= MAX_ENTRIES_UNLIMITED) return 0;
+
+  maxEntriesPruneInProgress = true;
+  try {
+    const items = await getItems();
+    const idsToDelete = getOverflowItemsToDelete(items);
+    if (!idsToDelete.length) return 0;
+    await deleteItems(idsToDelete);
+    return idsToDelete.length;
+  } finally {
+    maxEntriesPruneInProgress = false;
   }
 }
 
@@ -969,6 +1024,7 @@ function renderFilteredItems() {
 async function loadItems({ skipPrune = false } = {}) {
   if (!skipPrune) {
     await pruneExpiredItems();
+    await pruneItemsOverLimit();
   }
   const items = await getItems();
   allItems = items;
@@ -1083,26 +1139,29 @@ settingsOverlay?.addEventListener('click', (e) => {
 settingsForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const nextAutoExpireMs = normalizeAutoExpireMs(expiryDurationSelect?.value);
+  const nextMaxEntries = normalizeMaxEntries(maxEntriesInput?.value);
   appSettings = {
     ...appSettings,
     autoExpireMs: nextAutoExpireMs,
+    maxEntries: nextMaxEntries,
   };
   saveSettings();
   startAutoExpireTimer();
-  const removedCount = await pruneExpiredItems();
+  const removedCountByExpiry = await pruneExpiredItems();
+  const removedCountByLimit = await pruneItemsOverLimit();
+  const removedCount = removedCountByExpiry + removedCountByLimit;
   await loadItems({ skipPrune: true });
   closeSettingsModal();
 
-  if (nextAutoExpireMs === AUTO_EXPIRE_DISABLED_MS) {
-    showToast('Auto-clear disabled');
-    return;
-  }
-
+  const autoClearLabel = nextAutoExpireMs === AUTO_EXPIRE_DISABLED_MS
+    ? 'Off'
+    : getAutoExpireLabel(nextAutoExpireMs);
+  const maxEntriesLabel = getMaxEntriesLabel(nextMaxEntries);
   if (removedCount > 0) {
-    showToast(`Auto-clear set to ${getAutoExpireLabel(nextAutoExpireMs)}. Removed ${getClipCountLabel(removedCount)}.`);
+    showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}. Removed ${getClipCountLabel(removedCount)}.`);
     return;
   }
-  showToast(`Auto-clear set to ${getAutoExpireLabel(nextAutoExpireMs)}.`);
+  showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}.`);
 });
 
 list.addEventListener('click', (e) => {

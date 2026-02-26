@@ -107,7 +107,20 @@
               <option value="7776000000">90 days</option>
             </select>
           </label>
-          <p class="settings-note">Pinned clips are never auto-cleared.</p>
+          <label>
+            Max clipboard entries (0 = unlimited)
+            <input
+              id="max-entries"
+              name="max-entries"
+              type="number"
+              min="0"
+              max="500"
+              step="1"
+              inputmode="numeric"
+              placeholder="0"
+            />
+          </label>
+          <p class="settings-note">Pinned clips are never auto-cleared by time. When max is reached, oldest clips are removed first.</p>
           <button type="submit">Save settings</button>
         </form>
       </div>
