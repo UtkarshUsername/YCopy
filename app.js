@@ -41,6 +41,8 @@ let lockedScrollY = 0;
 let savedBodyPaddingRight = '';
 let appliedBodyPaddingRight = false;
 const LONG_PRESS_MS = 500;
+const TOUCH_MOUSE_SUPPRESSION_MS = 800;
+let suppressMouseEventsUntil = 0;
 
 const MAX_TEXT_LENGTH = 320;
 const MAX_FILE_NAME_LENGTH = 56;
@@ -62,6 +64,14 @@ function escapeHtml(value = '') {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function markTouchInteraction() {
+  suppressMouseEventsUntil = Date.now() + TOUCH_MOUSE_SUPPRESSION_MS;
+}
+
+function isSyntheticMouseEvent() {
+  return Date.now() < suppressMouseEventsUntil;
 }
 
 function truncateText(value = '', maxLength) {
@@ -723,6 +733,9 @@ function renderItems(items, query = '', filterSummary = '') {
     const startLongPress = (e) => {
       // Don't interfere with links or images
       if (e.target.closest('a, .img-preview')) return;
+      if (e.type === 'touchstart') {
+        markTouchInteraction();
+      }
       pressStarted = true;
       cancelLongPress();
       longPressTimer = setTimeout(() => {
@@ -738,6 +751,9 @@ function renderItems(items, query = '', filterSummary = '') {
     };
 
     const endPress = (e) => {
+      if (e.type === 'touchend') {
+        markTouchInteraction();
+      }
       cancelLongPress();
       if (!pressStarted) return;
       pressStarted = false;
@@ -764,10 +780,12 @@ function renderItems(items, query = '', filterSummary = '') {
     // Mouse events for desktop
     li.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      if (isSyntheticMouseEvent()) return;
       startLongPress(e);
     });
     li.addEventListener('mouseup', (e) => {
       if (e.button !== 0) return;
+      if (isSyntheticMouseEvent()) return;
       endPress(e);
     });
     li.addEventListener('mouseleave', cancelPress);
