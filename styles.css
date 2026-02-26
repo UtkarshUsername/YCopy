@@ -80,7 +80,7 @@ header h1 {
   place-items: center;
   border-radius: 10px;
   background: var(--surface-hover);
-  border: 1px solid var(--border);
+  border: none;
   color: var(--text-secondary);
   font-size: 1.3rem;
   font-weight: 300;
@@ -91,7 +91,6 @@ header h1 {
 .header-btn:hover {
   background: var(--accent-light);
   color: var(--accent);
-  border-color: rgba(61, 90, 241, 0.25);
 }
 
 #fab {
