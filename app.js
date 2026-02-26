@@ -80,13 +80,97 @@ function openDb() {
   });
 }
 
+function normalizeStoredText(value = '') {
+  return value?.toString().trim() || '';
+}
+
+function normalizeStoredUrl(value = '') {
+  return value?.toString().trim() || '';
+}
+
+function normalizeStoredFiles(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function getFileDedupSignature(file = {}) {
+  const blobSize = Number.isFinite(file?.blob?.size) ? file.blob.size : null;
+  const rawSize = Number.isFinite(file?.size) ? file.size : null;
+  return JSON.stringify([
+    file?.name || '',
+    file?.type || '',
+    blobSize ?? rawSize ?? 0,
+  ]);
+}
+
+function getItemDedupSignature(item = {}) {
+  return JSON.stringify([
+    normalizeStoredText(item.text),
+    normalizeStoredUrl(item.url),
+    normalizeStoredFiles(item.files).map(getFileDedupSignature),
+  ]);
+}
+
 async function addItem(item) {
+  const normalizedItem = {
+    ...item,
+    text: normalizeStoredText(item.text),
+    url: normalizeStoredUrl(item.url),
+    files: normalizeStoredFiles(item.files),
+  };
+  const incomingSignature = getItemDedupSignature(normalizedItem);
+
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).add(item);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    const store = tx.objectStore(STORE);
+    const existingRequest = store.getAll();
+    let settled = false;
+
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    const resolveOnce = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    existingRequest.onsuccess = () => {
+      const existingItems = existingRequest.result || [];
+      const existing = existingItems.find((savedItem) => getItemDedupSignature(savedItem) === incomingSignature);
+      const now = Date.now();
+
+      if (existing) {
+        const updatedItem = {
+          ...existing,
+          text: normalizedItem.text,
+          url: normalizedItem.url,
+          files: normalizedItem.files,
+          createdAt: now,
+        };
+        if (Number.isFinite(existing.pinnedAt) && existing.pinnedAt > 0) {
+          updatedItem.pinnedAt = now;
+        }
+        const putRequest = store.put(updatedItem);
+        putRequest.onsuccess = () => resolveOnce({ id: existing.id, deduplicated: true });
+        putRequest.onerror = () => rejectOnce(putRequest.error || tx.error);
+        return;
+      }
+
+      const addRequest = store.add({
+        ...normalizedItem,
+        createdAt: Number.isFinite(normalizedItem.createdAt) ? normalizedItem.createdAt : now,
+        pinnedAt: normalizedItem.pinnedAt ?? null,
+      });
+      addRequest.onsuccess = () => resolveOnce({ id: Number(addRequest.result), deduplicated: false });
+      addRequest.onerror = () => rejectOnce(addRequest.error || tx.error);
+    };
+
+    existingRequest.onerror = () => rejectOnce(existingRequest.error || tx.error);
+    tx.onerror = () => rejectOnce(tx.error);
   });
 }
 

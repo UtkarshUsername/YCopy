@@ -1,6 +1,6 @@
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v23';
+const CACHE_VERSION = 'v24';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
@@ -80,6 +80,36 @@ function normalizeShareUrlCandidate(value = '') {
   }
 }
 
+function normalizeStoredText(value = '') {
+  return value?.toString().trim() || '';
+}
+
+function normalizeStoredUrl(value = '') {
+  return value?.toString().trim() || '';
+}
+
+function normalizeStoredFiles(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function getFileDedupSignature(file = {}) {
+  const blobSize = Number.isFinite(file?.blob?.size) ? file.blob.size : null;
+  const rawSize = Number.isFinite(file?.size) ? file.size : null;
+  return JSON.stringify([
+    file?.name || '',
+    file?.type || '',
+    blobSize ?? rawSize ?? 0,
+  ]);
+}
+
+function getItemDedupSignature(item = {}) {
+  return JSON.stringify([
+    normalizeStoredText(item.text),
+    normalizeStoredUrl(item.url),
+    normalizeStoredFiles(item.files).map(getFileDedupSignature),
+  ]);
+}
+
 async function saveShare(formData) {
   let text = formData.get('text')?.toString().trim() || '';
   let url = normalizeShareUrlCandidate(formData.get('url')?.toString().trim() || '');
@@ -100,25 +130,77 @@ async function saveShare(formData) {
     type: file.type,
     blob: file,
   }));
-  const createdAt = Date.now();
+  const normalizedItem = {
+    text: normalizeStoredText(text),
+    url: normalizeStoredUrl(url),
+    files: normalizeStoredFiles(files),
+  };
+  const incomingSignature = getItemDedupSignature(normalizedItem);
 
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    const request = tx.objectStore(STORE).add({
-      text,
-      url,
-      files,
-      createdAt,
-      pinnedAt: null,
-    });
-    tx.oncomplete = () => {
-      resolve({
-        id: Number(request.result),
-        createdAt,
-      });
+    const store = tx.objectStore(STORE);
+    const existingRequest = store.getAll();
+    let settled = false;
+
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
     };
-    tx.onerror = () => reject(tx.error);
+
+    const resolveOnce = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    existingRequest.onsuccess = () => {
+      const existingItems = existingRequest.result || [];
+      const existing = existingItems.find((savedItem) => getItemDedupSignature(savedItem) === incomingSignature);
+      const now = Date.now();
+
+      if (existing) {
+        const updatedItem = {
+          ...existing,
+          text: normalizedItem.text,
+          url: normalizedItem.url,
+          files: normalizedItem.files,
+          createdAt: now,
+        };
+        if (Number.isFinite(existing.pinnedAt) && existing.pinnedAt > 0) {
+          updatedItem.pinnedAt = now;
+        }
+        const putRequest = store.put(updatedItem);
+        putRequest.onsuccess = () => {
+          resolveOnce({
+            id: Number(existing.id),
+            createdAt: now,
+          });
+        };
+        putRequest.onerror = () => rejectOnce(putRequest.error || tx.error);
+        return;
+      }
+
+      const addRequest = store.add({
+        text: normalizedItem.text,
+        url: normalizedItem.url,
+        files: normalizedItem.files,
+        createdAt: now,
+        pinnedAt: null,
+      });
+      addRequest.onsuccess = () => {
+        resolveOnce({
+          id: Number(addRequest.result),
+          createdAt: now,
+        });
+      };
+      addRequest.onerror = () => rejectOnce(addRequest.error || tx.error);
+    };
+
+    existingRequest.onerror = () => rejectOnce(existingRequest.error || tx.error);
+    tx.onerror = () => rejectOnce(tx.error);
   });
 }
 
