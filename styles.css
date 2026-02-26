@@ -331,6 +331,9 @@ button.ghost:hover {
 }
 
 .item a.item-link {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   color: var(--accent);
   font-size: 0.88rem;
   font-weight: 500;
