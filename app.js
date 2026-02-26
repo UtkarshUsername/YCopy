@@ -391,9 +391,10 @@ async function pruneExpiredItems() {
 function getOverflowItemsToDelete(items = []) {
   const maxEntries = appSettings.maxEntries;
   if (maxEntries <= MAX_ENTRIES_UNLIMITED) return [];
-  if (items.length <= maxEntries) return [];
-  const overflow = items.length - maxEntries;
-  return [...items]
+  const unpinnedItems = items.filter((item) => !isItemPinned(item));
+  if (unpinnedItems.length <= maxEntries) return [];
+  const overflow = unpinnedItems.length - maxEntries;
+  return [...unpinnedItems]
     .sort((a, b) => {
       const aCreatedAt = Number.isFinite(a?.createdAt) ? a.createdAt : 0;
       const bCreatedAt = Number.isFinite(b?.createdAt) ? b.createdAt : 0;
