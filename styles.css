@@ -79,7 +79,7 @@ header h1 {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: var(--surface-hover);
+  background: color-mix(in srgb, currentColor 70%, transparent);
   border: none;
   color: var(--text-secondary);
   font-size: 1.3rem;
@@ -89,7 +89,6 @@ header h1 {
 }
 
 .header-btn:hover {
-  background: var(--accent-light);
   color: var(--accent);
 }
 
@@ -98,7 +97,6 @@ header h1 {
 }
 
 #fab:hover {
-  background: var(--accent-light);
   color: var(--accent);
 }
 
@@ -113,7 +111,6 @@ header h1 {
 }
 
 .header-btn-danger:hover {
-  background: var(--danger-light);
   color: var(--danger);
 }
 
