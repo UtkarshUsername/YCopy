@@ -91,6 +91,19 @@ header h1 {
   color: var(--accent);
 }
 
+#fab {
+  color: rgba(61, 90, 241, 0.7);
+}
+
+#fab:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+#open-settings {
+  color: rgba(107, 113, 148, 0.7);
+}
+
 .header-btn-danger {
   font-size: 0.72rem;
   font-weight: 600;
