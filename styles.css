@@ -377,9 +377,9 @@ button.ghost:hover {
 }
 
 .item .item-expiry {
-  color: var(--text-secondary);
+  color: #999;
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 500;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
