@@ -352,10 +352,34 @@ button.ghost:hover {
   margin-top: 0.1rem;
 }
 
+.item .item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+}
+
+.item .item-meta .item-time {
+  margin-top: 0;
+}
+
 .item .item-expiry {
   color: var(--danger);
   font-size: 0.72rem;
   font-weight: 600;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.item .item-expiry em {
+  font-style: italic;
+}
+
+.item .expiry-indicator {
+  flex-shrink: 0;
 }
 
 .item a.item-link {
