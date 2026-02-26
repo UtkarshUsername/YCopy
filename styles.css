@@ -365,13 +365,17 @@ button.ghost:hover {
 }
 
 .item .item-expiry {
-  color: var(--danger);
+  color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 600;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.22rem;
+}
+
+.item .item-expiry.item-expiry-urgent {
+  color: var(--danger);
 }
 
 .item .item-expiry em {

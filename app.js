@@ -179,14 +179,22 @@ function getMaxEntriesLabel(maxEntries = appSettings.maxEntries) {
   return maxEntries === MAX_ENTRIES_UNLIMITED ? 'Unlimited' : `${maxEntries}`;
 }
 
-function getExpiryStatusLabel(item, now = Date.now()) {
-  if (appSettings.autoExpireMs <= AUTO_EXPIRE_DISABLED_MS) return '';
-  if (!item || isItemPinned(item) || !Number.isFinite(item.createdAt)) return '';
+function getExpiryStatus(item, now = Date.now()) {
+  if (appSettings.autoExpireMs <= AUTO_EXPIRE_DISABLED_MS) return null;
+  if (!item || isItemPinned(item) || !Number.isFinite(item.createdAt)) return null;
   const expiresAt = item.createdAt + appSettings.autoExpireMs;
   const msLeft = expiresAt - now;
-  if (msLeft <= 0) return 'Expiring today';
+  if (msLeft <= 0) {
+    return {
+      label: 'Expiring today',
+      isUrgent: true,
+    };
+  }
   const daysLeft = Math.ceil(msLeft / DAY_IN_MS);
-  return daysLeft === 1 ? 'Expiring in 1 day' : `Expiring in ${daysLeft} days`;
+  return {
+    label: daysLeft === 1 ? 'Expiring in 1 day' : `Expiring in ${daysLeft} days`,
+    isUrgent: daysLeft <= 7,
+  };
 }
 
 appSettings = loadSettings();
@@ -925,7 +933,7 @@ function renderItems(items, query = '', filterSummary = '') {
 
   sortedItems.forEach((item) => {
     const pinned = isItemPinned(item);
-    const expiryStatusLabel = getExpiryStatusLabel(item, now);
+    const expiryStatus = getExpiryStatus(item, now);
     const li = document.createElement('li');
     li.className = `item${pinned ? ' item-pinned' : ''}${selectedIds.has(item.id) ? ' item-selected' : ''}`;
     li.dataset.itemId = item.id;
@@ -941,7 +949,7 @@ function renderItems(items, query = '', filterSummary = '') {
         ${buildFilePreview(item.files)}
         <div class="item-meta">
           <small class="item-time">${pinned ? '<svg class="pin-indicator" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg> · ' : ''}${formatDate(item.createdAt)}</small>
-          ${expiryStatusLabel ? `<small class="item-expiry"><svg class="expiry-indicator" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg><em>${expiryStatusLabel}</em></small>` : ''}
+          ${expiryStatus ? `<small class="item-expiry${expiryStatus.isUrgent ? ' item-expiry-urgent' : ''}"><svg class="expiry-indicator" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg><em>${expiryStatus.label}</em></small>` : ''}
         </div>
       `;
 
