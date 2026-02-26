@@ -352,6 +352,12 @@ button.ghost:hover {
   margin-top: 0.1rem;
 }
 
+.item .item-expiry {
+  color: var(--danger);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .item a.item-link {
   display: block;
   width: 100%;

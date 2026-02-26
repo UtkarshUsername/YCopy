@@ -52,25 +52,26 @@ let suppressMouseEventsUntil = 0;
 const MAX_TEXT_LENGTH = 320;
 const MAX_FILE_NAME_LENGTH = 56;
 const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YCopy.';
+const DAY_IN_MS = 86400000;
 const SETTINGS_STORAGE_KEY = 'ycopy-settings';
 const AUTO_EXPIRE_DISABLED_MS = 0;
 const AUTO_EXPIRE_OPTIONS_MS = [
   AUTO_EXPIRE_DISABLED_MS,
-  86400000,
-  259200000,
-  604800000,
-  1209600000,
-  2592000000,
-  7776000000,
+  DAY_IN_MS,
+  3 * DAY_IN_MS,
+  7 * DAY_IN_MS,
+  14 * DAY_IN_MS,
+  30 * DAY_IN_MS,
+  90 * DAY_IN_MS,
 ];
 const AUTO_EXPIRE_LABELS = {
   [AUTO_EXPIRE_DISABLED_MS]: 'Off',
-  86400000: '1 day',
-  259200000: '3 days',
-  604800000: '7 days',
-  1209600000: '14 days',
-  2592000000: '30 days',
-  7776000000: '90 days',
+  [DAY_IN_MS]: '1 day',
+  [3 * DAY_IN_MS]: '3 days',
+  [7 * DAY_IN_MS]: '7 days',
+  [14 * DAY_IN_MS]: '14 days',
+  [30 * DAY_IN_MS]: '30 days',
+  [90 * DAY_IN_MS]: '90 days',
 };
 const DEFAULT_SETTINGS = Object.freeze({
   autoExpireMs: AUTO_EXPIRE_DISABLED_MS,
@@ -154,6 +155,16 @@ function syncSettingsForm() {
 
 function getClipCountLabel(count) {
   return `${count} clip${count === 1 ? '' : 's'}`;
+}
+
+function getExpiryStatusLabel(item, now = Date.now()) {
+  if (appSettings.autoExpireMs <= AUTO_EXPIRE_DISABLED_MS) return '';
+  if (!item || isItemPinned(item) || !Number.isFinite(item.createdAt)) return '';
+  const expiresAt = item.createdAt + appSettings.autoExpireMs;
+  const msLeft = expiresAt - now;
+  if (msLeft <= 0) return 'Expiring today';
+  const daysLeft = Math.ceil(msLeft / DAY_IN_MS);
+  return daysLeft === 1 ? 'Expiring in 1 day' : `Expiring in ${daysLeft} days`;
 }
 
 appSettings = loadSettings();
@@ -839,6 +850,7 @@ function renderItems(items, query = '', filterSummary = '') {
   clearObjectUrls();
   list.innerHTML = '';
   const sortedItems = sortItemsForDisplay(items);
+  const now = Date.now();
   itemsById = new Map(sortedItems.map((item) => [item.id, item]));
 
   if (!sortedItems.length) {
@@ -858,6 +870,7 @@ function renderItems(items, query = '', filterSummary = '') {
 
   sortedItems.forEach((item) => {
     const pinned = isItemPinned(item);
+    const expiryStatusLabel = getExpiryStatusLabel(item, now);
     const li = document.createElement('li');
     li.className = `item${pinned ? ' item-pinned' : ''}${selectedIds.has(item.id) ? ' item-selected' : ''}`;
     li.dataset.itemId = item.id;
@@ -872,6 +885,7 @@ function renderItems(items, query = '', filterSummary = '') {
         ${item.url ? `<a class="item-link" href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${safeUrlLabel}</a>` : ''}
         ${buildFilePreview(item.files)}
         <small class="item-time">${pinned ? '<svg class="pin-indicator" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg> · ' : ''}${formatDate(item.createdAt)}</small>
+        ${expiryStatusLabel ? `<small class="item-expiry">${expiryStatusLabel}</small>` : ''}
       `;
 
     // Long press to enter selection mode
