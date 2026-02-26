@@ -43,8 +43,6 @@ let appliedBodyPaddingRight = false;
 const LONG_PRESS_MS = 500;
 
 const MAX_TEXT_LENGTH = 320;
-const MAX_URL_LENGTH = 56;
-const MOBILE_MAX_URL_LENGTH = 42;
 const MAX_FILE_NAME_LENGTH = 56;
 const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YCopy.';
 
@@ -66,13 +64,6 @@ function truncateMiddle(value = '', maxLength) {
   if (value.length <= maxLength) return value;
   const sideLength = Math.max(1, Math.floor((maxLength - 1) / 2));
   return `${value.slice(0, sideLength)}…${value.slice(-sideLength)}`;
-}
-
-function getUrlMaxLength() {
-  if (window.matchMedia('(max-width: 640px)').matches) {
-    return MOBILE_MAX_URL_LENGTH;
-  }
-  return MAX_URL_LENGTH;
 }
 
 function openDb() {
@@ -625,9 +616,7 @@ function renderItems(items, query = '', filterSummary = '') {
       : '';
     const safeTextFull = item.text ? escapeHtml(item.text) : '';
     const safeUrl = item.url ? escapeHtml(item.url) : '';
-    const safeUrlLabel = item.url
-      ? escapeHtml(truncateText(item.url, getUrlMaxLength()))
-      : '';
+    const safeUrlLabel = safeUrl;
     li.innerHTML = `
         ${item.text ? `<p class="item-text" title="${safeTextFull}">${safeText}</p>` : ''}
         ${item.url ? `<a class="item-link" href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${safeUrlLabel}</a>` : ''}
