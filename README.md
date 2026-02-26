@@ -8,6 +8,7 @@ A local-first PWA clipboard that saves shared text, links, and files into Indexe
 - Offline-first with service worker caching
 - Saves text, links, and files to IndexedDB
 - Pin important clips to keep them at the top
+- Optional auto-clear for old unpinned clips (configurable)
 - Fuzzy search across saved text, links, and file names
 - Image previews and file download links
 - One-tap copy for saved text and links

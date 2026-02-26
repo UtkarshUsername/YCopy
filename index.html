@@ -10,7 +10,10 @@
   </head>
   <body>
     <header id="header-default">
-      <button id="clear-all" class="header-btn header-btn-danger" aria-label="Clear all">Clear</button>
+      <div class="header-actions">
+        <button id="clear-all" class="header-btn header-btn-danger" aria-label="Clear all">Clear</button>
+        <button id="open-settings" class="header-btn" aria-label="Open settings" title="Settings">⚙</button>
+      </div>
       <h1>YCopy</h1>
       <button id="fab" class="header-btn" aria-label="Add note">+</button>
     </header>
@@ -81,6 +84,31 @@
             <input type="url" name="url" placeholder="https://" />
           </label>
           <button type="submit">Save</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="settings-overlay" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button id="settings-close" class="modal-close" aria-label="Close settings">✕</button>
+        </div>
+        <form id="settings-form">
+          <label>
+            Auto-clear unpinned clips older than
+            <select id="expiry-duration" name="expiry-duration">
+              <option value="0">Off</option>
+              <option value="86400000">1 day</option>
+              <option value="259200000">3 days</option>
+              <option value="604800000">7 days</option>
+              <option value="1209600000">14 days</option>
+              <option value="2592000000">30 days</option>
+              <option value="7776000000">90 days</option>
+            </select>
+          </label>
+          <p class="settings-note">Pinned clips are never auto-cleared.</p>
+          <button type="submit">Save settings</button>
         </form>
       </div>
     </div>

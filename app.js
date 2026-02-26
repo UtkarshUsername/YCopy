@@ -12,6 +12,11 @@ const toast = document.getElementById('toast');
 const fab = document.getElementById('fab');
 const modalOverlay = document.getElementById('modal-overlay');
 const modalClose = document.getElementById('modal-close');
+const openSettingsButton = document.getElementById('open-settings');
+const settingsOverlay = document.getElementById('settings-overlay');
+const settingsClose = document.getElementById('settings-close');
+const settingsForm = document.getElementById('settings-form');
+const expiryDurationSelect = document.getElementById('expiry-duration');
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
 const lightboxClose = document.getElementById('lightbox-close');
@@ -47,6 +52,32 @@ let suppressMouseEventsUntil = 0;
 const MAX_TEXT_LENGTH = 320;
 const MAX_FILE_NAME_LENGTH = 56;
 const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YCopy.';
+const SETTINGS_STORAGE_KEY = 'ycopy-settings';
+const AUTO_EXPIRE_DISABLED_MS = 0;
+const AUTO_EXPIRE_OPTIONS_MS = [
+  AUTO_EXPIRE_DISABLED_MS,
+  86400000,
+  259200000,
+  604800000,
+  1209600000,
+  2592000000,
+  7776000000,
+];
+const AUTO_EXPIRE_LABELS = {
+  [AUTO_EXPIRE_DISABLED_MS]: 'Off',
+  86400000: '1 day',
+  259200000: '3 days',
+  604800000: '7 days',
+  1209600000: '14 days',
+  2592000000: '30 days',
+  7776000000: '90 days',
+};
+const DEFAULT_SETTINGS = Object.freeze({
+  autoExpireMs: AUTO_EXPIRE_DISABLED_MS,
+});
+let appSettings = { ...DEFAULT_SETTINGS };
+let autoExpireIntervalId = null;
+let autoExpireInProgress = false;
 
 function syncSearchStickyOffset() {
   const activeHeader = headerSelection && !headerSelection.hidden
@@ -84,6 +115,48 @@ function truncateMiddle(value = '', maxLength) {
   const sideLength = Math.max(1, Math.floor((maxLength - 1) / 2));
   return `${value.slice(0, sideLength)}…${value.slice(-sideLength)}`;
 }
+
+function normalizeAutoExpireMs(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return DEFAULT_SETTINGS.autoExpireMs;
+  return AUTO_EXPIRE_OPTIONS_MS.includes(numericValue) ? numericValue : DEFAULT_SETTINGS.autoExpireMs;
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    const parsed = JSON.parse(raw);
+    return {
+      autoExpireMs: normalizeAutoExpireMs(parsed?.autoExpireMs),
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(appSettings));
+  } catch {
+    // Ignore storage failures; settings stay in-memory for this session.
+  }
+}
+
+function getAutoExpireLabel(autoExpireMs = appSettings.autoExpireMs) {
+  return AUTO_EXPIRE_LABELS[autoExpireMs] || AUTO_EXPIRE_LABELS[AUTO_EXPIRE_DISABLED_MS];
+}
+
+function syncSettingsForm() {
+  if (!expiryDurationSelect) return;
+  expiryDurationSelect.value = String(appSettings.autoExpireMs);
+}
+
+function getClipCountLabel(count) {
+  return `${count} clip${count === 1 ? '' : 's'}`;
+}
+
+appSettings = loadSettings();
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -213,6 +286,18 @@ async function deleteItem(id) {
   });
 }
 
+async function deleteItems(ids = []) {
+  if (!ids.length) return;
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    ids.forEach((id) => store.delete(id));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 async function updateItem(item) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
@@ -231,6 +316,57 @@ async function clearItems() {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+function getAutoExpireCutoff(now = Date.now()) {
+  if (appSettings.autoExpireMs <= AUTO_EXPIRE_DISABLED_MS) return null;
+  return now - appSettings.autoExpireMs;
+}
+
+async function pruneExpiredItems() {
+  if (autoExpireInProgress) return 0;
+  const cutoff = getAutoExpireCutoff();
+  if (cutoff === null) return 0;
+
+  autoExpireInProgress = true;
+  try {
+    const items = await getItems();
+    const expiredIds = items
+      .filter((item) => {
+        if (!Number.isFinite(item?.id)) return false;
+        if (isItemPinned(item)) return false;
+        return Number.isFinite(item?.createdAt) && item.createdAt <= cutoff;
+      })
+      .map((item) => item.id);
+
+    if (!expiredIds.length) return 0;
+    await deleteItems(expiredIds);
+    return expiredIds.length;
+  } finally {
+    autoExpireInProgress = false;
+  }
+}
+
+function stopAutoExpireTimer() {
+  if (autoExpireIntervalId === null) return;
+  window.clearInterval(autoExpireIntervalId);
+  autoExpireIntervalId = null;
+}
+
+function startAutoExpireTimer() {
+  stopAutoExpireTimer();
+  if (appSettings.autoExpireMs <= AUTO_EXPIRE_DISABLED_MS) return;
+  const intervalMs = Math.min(Math.max(Math.floor(appSettings.autoExpireMs / 8), 60000), 900000);
+  autoExpireIntervalId = window.setInterval(async () => {
+    try {
+      const removedCount = await pruneExpiredItems();
+      if (removedCount > 0) {
+        await loadItems({ skipPrune: true });
+      }
+    } catch {
+      // Ignore timer cleanup errors to avoid interrupting the UI.
+    }
+  }, intervalMs);
 }
 
 function formatDate(timestamp) {
@@ -311,6 +447,16 @@ function openAddModal() {
 
 function closeAddModal() {
   closeOverlay(modalOverlay);
+}
+
+function openSettingsModal() {
+  syncSettingsForm();
+  openOverlay(settingsOverlay);
+  expiryDurationSelect?.focus();
+}
+
+function closeSettingsModal() {
+  closeOverlay(settingsOverlay);
 }
 
 function openLightbox(src) {
@@ -804,7 +950,10 @@ function renderFilteredItems() {
   renderItems(filteredItems, currentSearchQuery, getFilterSummary(currentSearchFilter));
 }
 
-async function loadItems() {
+async function loadItems({ skipPrune = false } = {}) {
+  if (!skipPrune) {
+    await pruneExpiredItems();
+  }
   const items = await getItems();
   allItems = items;
   rebuildSearchIndex(allItems);
@@ -895,12 +1044,49 @@ fab.addEventListener('click', () => {
   openAddModal();
 });
 
+openSettingsButton?.addEventListener('click', () => {
+  openSettingsModal();
+});
+
 modalClose.addEventListener('click', () => {
   closeAddModal();
 });
 
 modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) closeAddModal();
+});
+
+settingsClose?.addEventListener('click', () => {
+  closeSettingsModal();
+});
+
+settingsOverlay?.addEventListener('click', (e) => {
+  if (e.target === settingsOverlay) closeSettingsModal();
+});
+
+settingsForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const nextAutoExpireMs = normalizeAutoExpireMs(expiryDurationSelect?.value);
+  appSettings = {
+    ...appSettings,
+    autoExpireMs: nextAutoExpireMs,
+  };
+  saveSettings();
+  startAutoExpireTimer();
+  const removedCount = await pruneExpiredItems();
+  await loadItems({ skipPrune: true });
+  closeSettingsModal();
+
+  if (nextAutoExpireMs === AUTO_EXPIRE_DISABLED_MS) {
+    showToast('Auto-clear disabled');
+    return;
+  }
+
+  if (removedCount > 0) {
+    showToast(`Auto-clear set to ${getAutoExpireLabel(nextAutoExpireMs)}. Removed ${getClipCountLabel(removedCount)}.`);
+    return;
+  }
+  showToast(`Auto-clear set to ${getAutoExpireLabel(nextAutoExpireMs)}.`);
 });
 
 list.addEventListener('click', (e) => {
@@ -985,9 +1171,7 @@ selectionDelete.addEventListener('click', async () => {
   const count = ids.length;
   const shouldDelete = window.confirm(`Delete ${count} clip${count > 1 ? 's' : ''}?`);
   if (!shouldDelete) return;
-  for (const id of ids) {
-    await deleteItem(id);
-  }
+  await deleteItems(ids);
   exitSelectionMode();
   await loadItems();
   showToast(`Deleted ${count} clip${count > 1 ? 's' : ''}`);
@@ -1035,6 +1219,8 @@ if (searchFilters) {
 }
 
 configureSelectionShareButton();
+syncSettingsForm();
+startAutoExpireTimer();
 syncSearchStickyOffset();
 window.addEventListener('resize', syncSearchStickyOffset);
 document.fonts?.ready?.then(syncSearchStickyOffset);
