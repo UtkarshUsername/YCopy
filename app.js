@@ -46,6 +46,15 @@ const MAX_TEXT_LENGTH = 320;
 const MAX_FILE_NAME_LENGTH = 56;
 const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YCopy.';
 
+function syncSearchStickyOffset() {
+  const activeHeader = headerSelection && !headerSelection.hidden
+    ? headerSelection
+    : headerDefault;
+  if (!activeHeader) return;
+  const headerHeight = Math.ceil(activeHeader.getBoundingClientRect().height);
+  document.documentElement.style.setProperty('--search-sticky-top', `${headerHeight}px`);
+}
+
 function escapeHtml(value = '') {
   return value
     .replaceAll('&', '&amp;')
@@ -604,6 +613,7 @@ function toggleSelection(id) {
 function updateSelectionUI() {
   headerDefault.hidden = selectionMode;
   headerSelection.hidden = !selectionMode;
+  syncSearchStickyOffset();
   selectionCount.textContent = selectedIds.size;
   document.querySelectorAll('.item[data-item-id]').forEach((el) => {
     const id = Number(el.dataset.itemId);
@@ -1007,6 +1017,9 @@ if (searchFilters) {
 }
 
 configureSelectionShareButton();
+syncSearchStickyOffset();
+window.addEventListener('resize', syncSearchStickyOffset);
+document.fonts?.ready?.then(syncSearchStickyOffset);
 
 if ('serviceWorker' in navigator) {
   let hasRefreshedForNewWorker = false;

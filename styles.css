@@ -25,6 +25,7 @@
   --shadow-lg: 0 8px 32px rgba(26, 29, 46, 0.08);
   --radius: 12px;
   --radius-sm: 8px;
+  --search-sticky-top: 45px;
 }
 
 body {
@@ -193,7 +194,7 @@ button.ghost:hover {
   padding: 0.75rem 1rem;
   max-width: 100%;
   position: sticky;
-  top: 45px;
+  top: var(--search-sticky-top);
   z-index: 9;
 }
 
