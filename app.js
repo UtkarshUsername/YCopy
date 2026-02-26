@@ -191,8 +191,11 @@ function getExpiryStatus(item, now = Date.now()) {
     };
   }
   const daysLeft = Math.ceil(msLeft / DAY_IN_MS);
+  if (daysLeft > 10) {
+    return null;
+  }
   return {
-    label: daysLeft === 1 ? 'Expiring in 1 day' : `Expiring in ${daysLeft} days`,
+    label: daysLeft === 1 ? 'Expires in 1 day' : `Expires in ${daysLeft} days`,
     isUrgent: daysLeft <= 7,
   };
 }
