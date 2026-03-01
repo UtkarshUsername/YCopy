@@ -81,6 +81,21 @@ const DEFAULT_SETTINGS = Object.freeze({
   autoExpireMs: AUTO_EXPIRE_DISABLED_MS,
   maxEntries: MAX_ENTRIES_UNLIMITED,
 });
+const FILE_EXTENSION_MIME_TYPES = Object.freeze({
+  csv: 'text/csv',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  odp: 'application/vnd.oasis.opendocument.presentation',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  odt: 'application/vnd.oasis.opendocument.text',
+  pdf: 'application/pdf',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  rtf: 'application/rtf',
+  txt: 'text/plain',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+});
 let appSettings = { ...DEFAULT_SETTINGS };
 let autoExpireIntervalId = null;
 let autoExpireInProgress = false;
@@ -778,15 +793,50 @@ function normalizeShareUrl(value = '') {
   }
 }
 
+function inferMimeTypeFromFileName(name = '') {
+  const trimmedName = name.toString().trim().toLowerCase();
+  const extension = trimmedName.includes('.')
+    ? trimmedName.slice(trimmedName.lastIndexOf('.') + 1)
+    : '';
+  return FILE_EXTENSION_MIME_TYPES[extension] || '';
+}
+
+function getShareFileMimeType(file = {}) {
+  const rawType = (file.type || file.blob?.type || '').toString().trim().toLowerCase();
+  if (rawType && rawType !== 'application/octet-stream') return rawType;
+  return inferMimeTypeFromFileName(file.name || '') || rawType || 'application/octet-stream';
+}
+
+function canShareFiles(files = []) {
+  if (!files.length) return false;
+  if (typeof navigator.canShare !== 'function') return true;
+  try {
+    return navigator.canShare({ files });
+  } catch {
+    return false;
+  }
+}
+
 function createShareFiles(files = []) {
   return files
     .filter((file) => file?.blob)
     .map((file, index) => {
       const blob = file.blob;
-      const type = file.type || blob.type || 'application/octet-stream';
       const name = file.name || `attachment-${index + 1}`;
+      const type = getShareFileMimeType(file);
       return new File([blob], name, { type, lastModified: Date.now() });
     });
+}
+
+function buildShareFallbackText(items = []) {
+  const clipboardText = buildCombinedClipboardText(items);
+  if (clipboardText) return clipboardText;
+
+  return items
+    .flatMap((item) => item?.files || [])
+    .map((file) => file?.name?.toString().trim() || '')
+    .filter(Boolean)
+    .join('\n');
 }
 
 async function shareItems(items = []) {
@@ -804,7 +854,7 @@ async function shareItems(items = []) {
     if (shareUrl) shareData.url = shareUrl;
 
     const shareFiles = createShareFiles(items[0]?.files || []);
-    if (shareFiles.length && navigator.canShare?.({ files: shareFiles })) {
+    if (canShareFiles(shareFiles)) {
       shareData.files = shareFiles;
     }
   }
@@ -1367,7 +1417,7 @@ selectionShare.addEventListener('click', async () => {
     return;
   }
 
-  const fallbackText = buildCombinedClipboardText(items);
+  const fallbackText = buildShareFallbackText(items);
   const fallbackStatus = await copyForShareFallback(fallbackText);
   if (fallbackStatus === 'copied') {
     exitSelectionMode();
