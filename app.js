@@ -571,7 +571,7 @@ function buildFilePreview(files = []) {
       if (file.blob) {
         const url = URL.createObjectURL(file.blob);
         activeObjectUrls.push(url);
-        if (file.type?.startsWith('image/')) {
+        if (isImageFile(file)) {
           return `
             <figure class="file-item">
               <img src="${url}" alt="${safeFileName}" loading="lazy" class="img-preview" data-full="${url}" />
@@ -598,27 +598,139 @@ function buildFilePreview(files = []) {
   return `<div class="file-preview">${parts}</div>`;
 }
 
-async function copyToClipboard(value) {
-  if (!navigator.clipboard) {
-    showToast('Clipboard not available');
-    return;
-  }
-  await navigator.clipboard.writeText(value);
-  showToast('Copied to clipboard');
+function isImageFile(file) {
+  const type = (file?.type || file?.blob?.type || '').toString().toLowerCase();
+  return type.startsWith('image/');
 }
 
-async function copyImageToClipboard(blob) {
-  if (!navigator.clipboard?.write) {
-    showToast('Image copy not supported');
-    return;
+function getDocumentClipboardMimeType(file) {
+  const type = (file?.type || file?.blob?.type || '').toString().trim().toLowerCase();
+  if (!type || type === 'application/octet-stream') return '';
+  return type;
+}
+
+function getClipboardTypeCandidates(mimeType = '') {
+  const normalizedType = mimeType.toString().trim().toLowerCase();
+  if (!normalizedType) return [];
+
+  const candidates = [normalizedType];
+  if (!normalizedType.startsWith('web ')) {
+    candidates.push(`web ${normalizedType}`);
   }
+
+  const supports = typeof ClipboardItem === 'function' && typeof ClipboardItem.supports === 'function'
+    ? ClipboardItem.supports.bind(ClipboardItem)
+    : null;
+  const supportedCandidates = supports
+    ? candidates.filter((candidate) => supports(candidate))
+    : candidates;
+
+  return supportedCandidates.length ? supportedCandidates : candidates;
+}
+
+function maybeShowClipboardToast(message, toastEnabled = true) {
+  if (toastEnabled && message) {
+    showToast(message);
+  }
+}
+
+async function copyToClipboard(value, {
+  successMessage = 'Copied to clipboard',
+  unavailableMessage = 'Clipboard not available',
+  blockedMessage = 'Clipboard blocked',
+  toastEnabled = true,
+} = {}) {
+  if (!navigator.clipboard?.writeText) {
+    maybeShowClipboardToast(unavailableMessage, toastEnabled);
+    return 'unavailable';
+  }
+
+  try {
+    await navigator.clipboard.writeText(value);
+    maybeShowClipboardToast(successMessage, toastEnabled);
+    return 'copied';
+  } catch {
+    maybeShowClipboardToast(blockedMessage, toastEnabled);
+    return 'blocked';
+  }
+}
+
+async function writeBlobToClipboard(blob, {
+  mimeType = blob?.type || '',
+  successMessage = 'Copied to clipboard',
+  webSuccessMessage = successMessage,
+  unsupportedMessage = 'Clipboard copy not supported',
+  blockedMessage = 'Clipboard blocked',
+  toastEnabled = true,
+} = {}) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem !== 'function') {
+    maybeShowClipboardToast(unsupportedMessage, toastEnabled);
+    return 'unsupported';
+  }
+
+  const typeCandidates = getClipboardTypeCandidates(mimeType);
+  if (!typeCandidates.length) {
+    maybeShowClipboardToast(unsupportedMessage, toastEnabled);
+    return 'unsupported';
+  }
+
+  let lastError = null;
+  for (const type of typeCandidates) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      const copiedAsWebFormat = type.startsWith('web ');
+      maybeShowClipboardToast(
+        copiedAsWebFormat ? webSuccessMessage : successMessage,
+        toastEnabled,
+      );
+      return copiedAsWebFormat ? 'copied-web' : 'copied';
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const failureMessage = lastError?.name === 'NotAllowedError'
+    ? blockedMessage
+    : unsupportedMessage;
+  maybeShowClipboardToast(failureMessage, toastEnabled);
+  return lastError?.name === 'NotAllowedError' ? 'blocked' : 'unsupported';
+}
+
+async function copyImageToClipboard(blob, options = {}) {
   const type = blob.type === 'image/png' ? 'image/png' : 'image/png';
   let pngBlob = blob;
   if (blob.type !== 'image/png') {
-    pngBlob = await convertToPngBlob(blob);
+    try {
+      pngBlob = await convertToPngBlob(blob);
+    } catch {
+      maybeShowClipboardToast(options.unsupportedMessage || 'Image copy not supported', options.toastEnabled ?? true);
+      return 'unsupported';
+    }
   }
-  await navigator.clipboard.write([new ClipboardItem({ [type]: pngBlob })]);
-  showToast('Image copied to clipboard');
+  return writeBlobToClipboard(pngBlob, {
+    mimeType: type,
+    successMessage: 'Image copied to clipboard',
+    unsupportedMessage: 'Image copy not supported',
+    blockedMessage: 'Image copy blocked',
+    ...options,
+  });
+}
+
+async function copyDocumentToClipboard(file, options = {}) {
+  const mimeType = getDocumentClipboardMimeType(file);
+  if (!file?.blob || !mimeType) {
+    maybeShowClipboardToast(options.unsupportedMessage || 'Document copy not supported on this device', options.toastEnabled ?? true);
+    return 'unsupported';
+  }
+
+  return writeBlobToClipboard(file.blob, {
+    mimeType,
+    successMessage: 'Document copied to clipboard',
+    webSuccessMessage: 'Document copied in web format',
+    unsupportedMessage: 'Document copy not supported on this device',
+    blockedMessage: 'Document copy blocked',
+    ...options,
+  });
 }
 
 function convertToPngBlob(blob) {
@@ -710,18 +822,11 @@ async function shareItems(items = []) {
 
 async function copyForShareFallback(text) {
   if (!text) return 'empty';
-  if (!navigator.clipboard) {
-    showToast('Sharing unavailable on this device');
-    return 'unavailable';
-  }
-  try {
-    await navigator.clipboard.writeText(text);
-    showToast('Sharing unavailable, copied instead');
-    return 'copied';
-  } catch {
-    showToast('Sharing unavailable');
-    return 'unavailable';
-  }
+  return copyToClipboard(text, {
+    successMessage: 'Sharing unavailable, copied instead',
+    unavailableMessage: 'Sharing unavailable on this device',
+    blockedMessage: 'Sharing unavailable',
+  });
 }
 
 function getPinnedTimestamp(item) {
@@ -870,16 +975,46 @@ function updateClearAllVisibility() {
   clearAllButton.classList.toggle('header-btn-hidden', shouldHide);
 }
 
-async function copyItemToClipboard(item) {
+async function copyItemToClipboard(item, {
+  textOptions = {},
+  imageOptions = {},
+  documentOptions = {},
+  toastEnabled = true,
+} = {}) {
   const clipboardText = buildClipboardText(item);
   if (clipboardText) {
-    await copyToClipboard(clipboardText);
-  } else {
-    const imageFile = item.files?.find((f) => f?.type?.startsWith('image/') && f.blob);
-    if (imageFile) {
-      await copyImageToClipboard(imageFile.blob);
-    }
+    return copyToClipboard(clipboardText, {
+      toastEnabled,
+      ...textOptions,
+    });
   }
+
+  const imageFile = item.files?.find((file) => isImageFile(file) && file.blob);
+  if (imageFile) {
+    return copyImageToClipboard(imageFile.blob, {
+      toastEnabled,
+      ...imageOptions,
+    });
+  }
+
+  const documentFile = item.files?.find((file) => !isImageFile(file) && file.blob);
+  if (documentFile) {
+    return copyDocumentToClipboard(documentFile, {
+      toastEnabled,
+      ...documentOptions,
+    });
+  }
+
+  maybeShowClipboardToast('Nothing to copy', toastEnabled);
+  return 'empty';
+}
+
+function getSharedCopyToastMessage(status) {
+  if (status === 'copied') return 'Shared content saved and copied';
+  if (status === 'copied-web') return 'Shared content saved and copied in web format';
+  if (status === 'blocked') return 'Shared content saved (clipboard blocked)';
+  if (status === 'unsupported' || status === 'unavailable') return 'Shared content saved (clipboard unavailable)';
+  return 'Shared content saved';
 }
 
 function cancelLongPress() {
@@ -1068,34 +1203,16 @@ async function handleSharedContent(items) {
   const sharedItem = Number.isInteger(sharedId)
     ? (items.find((item) => item.id === sharedId) || getLatestItem(items))
     : getLatestItem(items);
-  const clipboardText = sharedItem ? buildClipboardText(sharedItem) : '';
+  const status = sharedItem
+    ? await copyItemToClipboard(sharedItem, {
+      textOptions: { toastEnabled: false },
+      imageOptions: { toastEnabled: false },
+      documentOptions: { toastEnabled: false },
+      toastEnabled: false,
+    })
+    : 'empty';
 
-  if (!navigator.clipboard) {
-    showToast('Shared content saved (clipboard unavailable)');
-    clearSharedParamsFromUrl();
-    return;
-  }
-
-  if (clipboardText) {
-    try {
-      await navigator.clipboard.writeText(clipboardText);
-      showToast('Shared content saved and copied');
-    } catch {
-      showToast('Shared content saved (clipboard blocked)');
-    }
-  } else {
-    const imageFile = sharedItem?.files?.find((f) => f?.type?.startsWith('image/') && f.blob);
-    if (imageFile) {
-      try {
-        await copyImageToClipboard(imageFile.blob);
-        showToast('Shared image saved and copied');
-      } catch {
-        showToast('Shared image saved (clipboard blocked)');
-      }
-    } else {
-      showToast('Shared content saved');
-    }
-  }
+  showToast(getSharedCopyToastMessage(status));
 
   clearSharedParamsFromUrl();
 }
@@ -1210,18 +1327,27 @@ selectionPin.addEventListener('click', async () => {
 });
 
 selectionCopy.addEventListener('click', async () => {
-  const ids = [...selectedIds];
-  const texts = [];
-  for (const id of ids) {
-    const item = itemsById.get(id);
-    if (!item) continue;
-    const t = buildClipboardText(item);
-    if (t) texts.push(t);
-  }
+  const items = [...selectedIds]
+    .map((id) => itemsById.get(id))
+    .filter(Boolean);
+  if (!items.length) return;
+
+  const texts = items
+    .map((item) => buildClipboardText(item))
+    .filter(Boolean);
+
+  let status = 'empty';
   if (texts.length) {
-    await copyToClipboard(texts.join('\n\n'));
+    status = await copyToClipboard(texts.join('\n\n'));
+  } else if (items.length === 1) {
+    status = await copyItemToClipboard(items[0]);
+  } else {
+    showToast('Select a single file clip to copy its document');
   }
-  exitSelectionMode();
+
+  if (status === 'copied' || status === 'copied-web') {
+    exitSelectionMode();
+  }
 });
 
 selectionShare.addEventListener('click', async () => {

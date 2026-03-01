@@ -12,7 +12,7 @@ A local-first PWA clipboard that saves shared text, links, and files into Indexe
 - Optional max-entry cap with oldest-first eviction
 - Fuzzy search across saved text, links, and file names
 - Image previews and file download links
-- One-tap copy for saved text and links
+- One-tap copy for saved text, images, and compatible document files
 
 ## Usage
 
@@ -51,6 +51,7 @@ Then in GitHub Pages settings, use:
 
 - The Share Target API requires HTTPS and a PWA install.
 - Some browsers may limit share targets or background share handling.
+- Clipboard support for document files is browser-dependent. On Android Chromium, some document copies may only paste into compatible web apps via web custom formats.
 
 ## Third-Party Licenses
 
