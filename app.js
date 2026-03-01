@@ -828,15 +828,8 @@ function createShareFiles(files = []) {
     });
 }
 
-function buildShareFallbackText(items = []) {
-  const clipboardText = buildCombinedClipboardText(items);
-  if (clipboardText) return clipboardText;
-
-  return items
-    .flatMap((item) => item?.files || [])
-    .map((file) => file?.name?.toString().trim() || '')
-    .filter(Boolean)
-    .join('\n');
+function selectionIncludesFiles(items = []) {
+  return items.some((item) => Array.isArray(item?.files) && item.files.some((file) => file?.blob));
 }
 
 async function shareItems(items = []) {
@@ -1417,7 +1410,7 @@ selectionShare.addEventListener('click', async () => {
     return;
   }
 
-  const fallbackText = buildShareFallbackText(items);
+  const fallbackText = buildCombinedClipboardText(items);
   const fallbackStatus = await copyForShareFallback(fallbackText);
   if (fallbackStatus === 'copied') {
     exitSelectionMode();
@@ -1425,7 +1418,9 @@ selectionShare.addEventListener('click', async () => {
   }
 
   if (fallbackStatus === 'empty') {
-    showToast('Nothing shareable in selection');
+    showToast(selectionIncludesFiles(items)
+      ? 'Document sharing unavailable on this device. Use download instead.'
+      : 'Nothing shareable in selection');
   }
 });
 
