@@ -609,12 +609,12 @@ function getDocumentClipboardMimeType(file) {
   return type;
 }
 
-function getClipboardTypeCandidates(mimeType = '') {
+function getClipboardTypeCandidates(mimeType = '', { includeWebCustomFormats = true } = {}) {
   const normalizedType = mimeType.toString().trim().toLowerCase();
   if (!normalizedType) return [];
 
   const candidates = [normalizedType];
-  if (!normalizedType.startsWith('web ')) {
+  if (includeWebCustomFormats && !normalizedType.startsWith('web ')) {
     candidates.push(`web ${normalizedType}`);
   }
 
@@ -662,13 +662,14 @@ async function writeBlobToClipboard(blob, {
   unsupportedMessage = 'Clipboard copy not supported',
   blockedMessage = 'Clipboard blocked',
   toastEnabled = true,
+  includeWebCustomFormats = true,
 } = {}) {
   if (!navigator.clipboard?.write || typeof ClipboardItem !== 'function') {
     maybeShowClipboardToast(unsupportedMessage, toastEnabled);
     return 'unsupported';
   }
 
-  const typeCandidates = getClipboardTypeCandidates(mimeType);
+  const typeCandidates = getClipboardTypeCandidates(mimeType, { includeWebCustomFormats });
   if (!typeCandidates.length) {
     maybeShowClipboardToast(unsupportedMessage, toastEnabled);
     return 'unsupported';
@@ -719,16 +720,16 @@ async function copyImageToClipboard(blob, options = {}) {
 async function copyDocumentToClipboard(file, options = {}) {
   const mimeType = getDocumentClipboardMimeType(file);
   if (!file?.blob || !mimeType) {
-    maybeShowClipboardToast(options.unsupportedMessage || 'Document copy not supported on this device', options.toastEnabled ?? true);
+    maybeShowClipboardToast(options.unsupportedMessage || 'Document clipboard copy is not supported here. Use Share or download instead.', options.toastEnabled ?? true);
     return 'unsupported';
   }
 
   return writeBlobToClipboard(file.blob, {
     mimeType,
     successMessage: 'Document copied to clipboard',
-    webSuccessMessage: 'Document copied in web format',
-    unsupportedMessage: 'Document copy not supported on this device',
+    unsupportedMessage: 'Document clipboard copy is not supported here. Use Share or download instead.',
     blockedMessage: 'Document copy blocked',
+    includeWebCustomFormats: false,
     ...options,
   });
 }
@@ -1011,9 +1012,8 @@ async function copyItemToClipboard(item, {
 
 function getSharedCopyToastMessage(status) {
   if (status === 'copied') return 'Shared content saved and copied';
-  if (status === 'copied-web') return 'Shared content saved and copied in web format';
   if (status === 'blocked') return 'Shared content saved (clipboard blocked)';
-  if (status === 'unsupported' || status === 'unavailable') return 'Shared content saved (clipboard unavailable)';
+  if (status === 'unsupported' || status === 'unavailable') return 'Shared content saved (document clipboard copy unsupported)';
   return 'Shared content saved';
 }
 
