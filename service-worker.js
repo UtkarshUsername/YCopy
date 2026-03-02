@@ -1,6 +1,6 @@
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v41';
+const CACHE_VERSION = 'v42';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
@@ -121,7 +121,8 @@ function appendExtensionFromMimeType(name = '', mimeType = '') {
   const normalizedMimeType = mimeType.toString().trim().toLowerCase();
   const extension = MIME_TYPE_FILE_EXTENSIONS[normalizedMimeType];
   if (!extension) return normalizedName;
-  return `${normalizedName}.${extension}`;
+  const baseName = normalizedName.endsWith('.') ? normalizedName.slice(0, -1) : normalizedName;
+  return `${baseName}.${extension}`;
 }
 
 function getFileDedupSignature(file = {}) {
