@@ -843,6 +843,10 @@ function isOfficeDocumentFile(file = {}) {
     || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 }
 
+function isPdfFile(file = {}) {
+  return getShareFileMimeType(file) === 'application/pdf';
+}
+
 function normalizeShareUrl(value = '') {
   if (!value) return '';
   try {
@@ -867,7 +871,22 @@ function getShareFileMimeType(file = {}) {
 }
 
 function hasSharePayload(data = {}) {
-  return Boolean(data?.text || data?.url || (Array.isArray(data?.files) && data.files.length));
+  return Boolean(
+    data?.title
+    || data?.text
+    || data?.url
+    || (Array.isArray(data?.files) && data.files.length),
+  );
+}
+
+function canShareData(data = {}) {
+  if (!hasSharePayload(data)) return false;
+  if (typeof navigator.canShare !== 'function') return true;
+  try {
+    return navigator.canShare(data);
+  } catch {
+    return false;
+  }
 }
 
 function createShareFiles(files = []) {
@@ -894,6 +913,19 @@ function buildSharePayloadVariants(items = []) {
 
   if (shareFiles.length) {
     variants.push({
+      title,
+      files: shareFiles,
+    });
+
+    if (combinedText) {
+      variants.push({
+        title,
+        text: combinedText,
+        files: shareFiles,
+      });
+    }
+
+    variants.push({
       files: shareFiles,
     });
   }
@@ -906,6 +938,23 @@ function buildSharePayloadVariants(items = []) {
   }
 
   return variants.filter((variant) => hasSharePayload(variant));
+}
+
+function prioritizeSharePayloadVariants(variants = []) {
+  if (typeof navigator.canShare !== 'function') return variants;
+
+  const shareableVariants = [];
+  const fallbackVariants = [];
+
+  variants.forEach((variant) => {
+    if (canShareData(variant)) {
+      shareableVariants.push(variant);
+      return;
+    }
+    fallbackVariants.push(variant);
+  });
+
+  return [...shareableVariants, ...fallbackVariants];
 }
 
 function selectionIncludesFiles(items = []) {
@@ -924,10 +973,14 @@ function downloadSingleSelectedFile(items = []) {
 async function shareItems(items = []) {
   if (!items.length || !navigator.share) return 'unsupported';
 
-  const sharePayloadVariants = buildSharePayloadVariants(items);
+  const sharePayloadVariants = prioritizeSharePayloadVariants(buildSharePayloadVariants(items));
   if (!sharePayloadVariants.length) return 'unsupported';
+  let attemptedFileShare = false;
 
   for (const shareData of sharePayloadVariants) {
+    if (Array.isArray(shareData?.files) && shareData.files.length) {
+      attemptedFileShare = true;
+    }
     try {
       await navigator.share(shareData);
       return 'shared';
@@ -936,6 +989,7 @@ async function shareItems(items = []) {
     }
   }
 
+  if (attemptedFileShare) return 'unsupported-files';
   return 'unsupported';
 }
 
@@ -1494,10 +1548,14 @@ selectionShare.addEventListener('click', async () => {
 
   if (fallbackStatus === 'empty' && downloadSingleSelectedFile(items)) {
     const file = items[0]?.files?.[0];
-    const message = file && !isChromiumWebShareFileType(file)
-      ? (isOfficeDocumentFile(file)
-        ? 'Chrome on Android cannot share DOCX and other Office files directly. Downloaded instead.'
-        : 'Chrome on Android cannot share this file type directly. Downloaded instead.')
+    const message = status === 'unsupported-files'
+      ? (file && isPdfFile(file)
+        ? 'Chrome on Android rejected this PDF share. Downloaded instead.'
+        : file && !isChromiumWebShareFileType(file)
+          ? (isOfficeDocumentFile(file)
+            ? 'Chrome on Android cannot share DOCX and other Office files directly. Downloaded instead.'
+            : 'Chrome on Android cannot share this file type directly. Downloaded instead.')
+          : 'Chrome on Android rejected this file share. Downloaded instead.')
       : 'Downloaded file because sharing is unavailable.';
     exitSelectionMode();
     showToast(message);
