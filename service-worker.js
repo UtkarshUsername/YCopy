@@ -1,6 +1,6 @@
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v40';
+const CACHE_VERSION = 'v41';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
@@ -19,6 +19,21 @@ const CORE_ASSETS = [
 const DB_NAME = 'clip-vault';
 const STORE = 'items';
 const DB_VERSION = 1;
+const MIME_TYPE_FILE_EXTENSIONS = Object.freeze({
+  'application/msword': 'doc',
+  'application/pdf': 'pdf',
+  'application/rtf': 'rtf',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.ms-powerpoint': 'ppt',
+  'application/vnd.oasis.opendocument.presentation': 'odp',
+  'application/vnd.oasis.opendocument.spreadsheet': 'ods',
+  'application/vnd.oasis.opendocument.text': 'odt',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'text/csv': 'csv',
+  'text/plain': 'txt',
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -92,6 +107,23 @@ function normalizeStoredFiles(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
+function fileNameHasExtension(name = '') {
+  const trimmedName = name.toString().trim();
+  if (!trimmedName) return false;
+  const lastDot = trimmedName.lastIndexOf('.');
+  return lastDot > 0 && lastDot < trimmedName.length - 1;
+}
+
+function appendExtensionFromMimeType(name = '', mimeType = '') {
+  const normalizedName = name.toString().trim() || 'attachment';
+  if (fileNameHasExtension(normalizedName)) return normalizedName;
+
+  const normalizedMimeType = mimeType.toString().trim().toLowerCase();
+  const extension = MIME_TYPE_FILE_EXTENSIONS[normalizedMimeType];
+  if (!extension) return normalizedName;
+  return `${normalizedName}.${extension}`;
+}
+
 function getFileDedupSignature(file = {}) {
   const blobSize = Number.isFinite(file?.blob?.size) ? file.blob.size : null;
   const rawSize = Number.isFinite(file?.size) ? file.size : null;
@@ -126,7 +158,7 @@ async function saveShare(formData) {
   }
 
   const files = formData.getAll('files').map((file) => ({
-    name: file.name,
+    name: appendExtensionFromMimeType(file.name, file.type),
     type: file.type,
     blob: file,
   }));
