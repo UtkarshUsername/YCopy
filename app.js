@@ -49,6 +49,17 @@ let appliedBodyPaddingRight = false;
 const LONG_PRESS_MS = 500;
 const TOUCH_MOUSE_SUPPRESSION_MS = 800;
 let suppressMouseEventsUntil = 0;
+const HAPTIC_MIN_INTERVAL_MS = 48;
+const HAPTIC_PATTERNS = Object.freeze({
+  selection: 12,
+  impactLight: 16,
+  impactMedium: 24,
+  impactHeavy: 36,
+  notificationSuccess: [18, 36, 22],
+  notificationWarning: [30, 48, 24],
+  notificationError: [36, 42, 36, 42, 60],
+});
+let lastHapticAt = 0;
 
 const MAX_TEXT_LENGTH = 320;
 const MAX_FILE_NAME_LENGTH = 56;
@@ -166,6 +177,45 @@ function truncateMiddle(value = '', maxLength) {
   if (value.length <= maxLength) return value;
   const sideLength = Math.max(1, Math.floor((maxLength - 1) / 2));
   return `${value.slice(0, sideLength)}…${value.slice(-sideLength)}`;
+}
+
+function triggerHapticPattern(pattern, { minimumIntervalMs = HAPTIC_MIN_INTERVAL_MS } = {}) {
+  if (typeof navigator?.vibrate !== 'function') return false;
+
+  const now = Date.now();
+  if (minimumIntervalMs > 0 && now - lastHapticAt < minimumIntervalMs) {
+    return false;
+  }
+
+  lastHapticAt = now;
+
+  try {
+    return navigator.vibrate(pattern);
+  } catch {
+    return false;
+  }
+}
+
+function triggerSelectionHaptic() {
+  return triggerHapticPattern(HAPTIC_PATTERNS.selection, { minimumIntervalMs: 32 });
+}
+
+function triggerImpactHaptic(style = 'medium') {
+  const pattern = style === 'light'
+    ? HAPTIC_PATTERNS.impactLight
+    : style === 'heavy'
+      ? HAPTIC_PATTERNS.impactHeavy
+      : HAPTIC_PATTERNS.impactMedium;
+  return triggerHapticPattern(pattern);
+}
+
+function triggerNotificationHaptic(type = 'success') {
+  const pattern = type === 'warning'
+    ? HAPTIC_PATTERNS.notificationWarning
+    : type === 'error'
+      ? HAPTIC_PATTERNS.notificationError
+      : HAPTIC_PATTERNS.notificationSuccess;
+  return triggerHapticPattern(pattern, { minimumIntervalMs: 96 });
 }
 
 function normalizeAutoExpireMs(value) {
@@ -698,17 +748,21 @@ async function copyToClipboard(value, {
   unavailableMessage = 'Clipboard not available',
   blockedMessage = 'Clipboard blocked',
   toastEnabled = true,
+  hapticsEnabled = true,
 } = {}) {
   if (!navigator.clipboard?.writeText) {
+    if (hapticsEnabled) triggerNotificationHaptic('warning');
     maybeShowClipboardToast(unavailableMessage, toastEnabled);
     return 'unavailable';
   }
 
   try {
     await navigator.clipboard.writeText(value);
+    if (hapticsEnabled) triggerSelectionHaptic();
     maybeShowClipboardToast(successMessage, toastEnabled);
     return 'copied';
   } catch {
+    if (hapticsEnabled) triggerNotificationHaptic('warning');
     maybeShowClipboardToast(blockedMessage, toastEnabled);
     return 'blocked';
   }
@@ -722,14 +776,17 @@ async function writeBlobToClipboard(blob, {
   blockedMessage = 'Clipboard blocked',
   toastEnabled = true,
   includeWebCustomFormats = true,
+  hapticsEnabled = true,
 } = {}) {
   if (!navigator.clipboard?.write || typeof ClipboardItem !== 'function') {
+    if (hapticsEnabled) triggerNotificationHaptic('warning');
     maybeShowClipboardToast(unsupportedMessage, toastEnabled);
     return 'unsupported';
   }
 
   const typeCandidates = getClipboardTypeCandidates(mimeType, { includeWebCustomFormats });
   if (!typeCandidates.length) {
+    if (hapticsEnabled) triggerNotificationHaptic('warning');
     maybeShowClipboardToast(unsupportedMessage, toastEnabled);
     return 'unsupported';
   }
@@ -739,6 +796,7 @@ async function writeBlobToClipboard(blob, {
     try {
       await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
       const copiedAsWebFormat = type.startsWith('web ');
+      if (hapticsEnabled) triggerSelectionHaptic();
       maybeShowClipboardToast(
         copiedAsWebFormat ? webSuccessMessage : successMessage,
         toastEnabled,
@@ -752,6 +810,7 @@ async function writeBlobToClipboard(blob, {
   const failureMessage = lastError?.name === 'NotAllowedError'
     ? blockedMessage
     : unsupportedMessage;
+  if (hapticsEnabled) triggerNotificationHaptic('warning');
   maybeShowClipboardToast(failureMessage, toastEnabled);
   return lastError?.name === 'NotAllowedError' ? 'blocked' : 'unsupported';
 }
@@ -763,6 +822,7 @@ async function copyImageToClipboard(blob, options = {}) {
     try {
       pngBlob = await convertToPngBlob(blob);
     } catch {
+      if (options.hapticsEnabled ?? true) triggerNotificationHaptic('warning');
       maybeShowClipboardToast(options.unsupportedMessage || 'Image copy not supported', options.toastEnabled ?? true);
       return 'unsupported';
     }
@@ -779,6 +839,7 @@ async function copyImageToClipboard(blob, options = {}) {
 async function copyDocumentToClipboard(file, options = {}) {
   const mimeType = getDocumentClipboardMimeType(file);
   if (!file?.blob || !mimeType) {
+    if (options.hapticsEnabled ?? true) triggerNotificationHaptic('warning');
     maybeShowClipboardToast(options.unsupportedMessage || 'Document clipboard copy is not supported here. Use Share or download instead.', options.toastEnabled ?? true);
     return 'unsupported';
   }
@@ -1153,11 +1214,13 @@ async function copyItemToClipboard(item, {
   imageOptions = {},
   documentOptions = {},
   toastEnabled = true,
+  hapticsEnabled = true,
 } = {}) {
   const clipboardText = buildClipboardText(item);
   if (clipboardText) {
     return copyToClipboard(clipboardText, {
       toastEnabled,
+      hapticsEnabled,
       ...textOptions,
     });
   }
@@ -1166,6 +1229,7 @@ async function copyItemToClipboard(item, {
   if (imageFile) {
     return copyImageToClipboard(imageFile.blob, {
       toastEnabled,
+      hapticsEnabled,
       ...imageOptions,
     });
   }
@@ -1174,10 +1238,12 @@ async function copyItemToClipboard(item, {
   if (documentFile) {
     return copyDocumentToClipboard(documentFile, {
       toastEnabled,
+      hapticsEnabled,
       ...documentOptions,
     });
   }
 
+  if (hapticsEnabled) triggerNotificationHaptic('warning');
   maybeShowClipboardToast('Nothing to copy', toastEnabled);
   return 'empty';
 }
@@ -1281,8 +1347,7 @@ function renderItems(items, query = '', filterSummary = '') {
         } else {
           toggleSelection(item.id);
         }
-        // Vibrate on supported devices
-        if (navigator.vibrate) navigator.vibrate(30);
+        triggerImpactHaptic('medium');
       }, LONG_PRESS_MS);
     };
 
@@ -1297,6 +1362,7 @@ function renderItems(items, query = '', filterSummary = '') {
       if (e.target.closest('a, .img-preview')) return;
       if (selectionMode) {
         toggleSelection(item.id);
+        triggerSelectionHaptic();
       } else {
         copyItemToClipboard(item);
       }
@@ -1381,6 +1447,7 @@ async function handleSharedContent(items) {
       imageOptions: { toastEnabled: false },
       documentOptions: { toastEnabled: false },
       toastEnabled: false,
+      hapticsEnabled: false,
     })
     : 'empty';
 
@@ -1396,6 +1463,7 @@ form.addEventListener('submit', async (event) => {
   const url = data.get('url')?.toString().trim();
 
   if (!text && !url) {
+    triggerNotificationHaptic('warning');
     showToast('Add at least one field');
     return;
   }
@@ -1410,18 +1478,22 @@ form.addEventListener('submit', async (event) => {
   form.reset();
   closeAddModal();
   await loadItems();
+  triggerNotificationHaptic('success');
   showToast('Saved clip');
 });
 
 fab.addEventListener('click', () => {
+  triggerImpactHaptic('light');
   openAddModal();
 });
 
 openSettingsButton?.addEventListener('click', () => {
+  triggerImpactHaptic('light');
   openSettingsModal();
 });
 
 modalClose.addEventListener('click', () => {
+  triggerSelectionHaptic();
   closeAddModal();
 });
 
@@ -1430,6 +1502,7 @@ modalOverlay.addEventListener('click', (e) => {
 });
 
 settingsClose?.addEventListener('click', () => {
+  triggerSelectionHaptic();
   closeSettingsModal();
 });
 
@@ -1459,19 +1532,23 @@ settingsForm?.addEventListener('submit', async (event) => {
     : getAutoExpireLabel(nextAutoExpireMs);
   const maxEntriesLabel = getMaxEntriesLabel(nextMaxEntries);
   if (removedCount > 0) {
+    triggerNotificationHaptic('success');
     showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}. Removed ${getClipCountLabel(removedCount)}.`);
     return;
   }
+  triggerNotificationHaptic('success');
   showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}.`);
 });
 
 list.addEventListener('click', (e) => {
   const img = e.target.closest('.img-preview');
   if (!img) return;
+  triggerImpactHaptic('light');
   openLightbox(img.dataset.full);
 });
 
 lightboxClose.addEventListener('click', () => {
+  triggerSelectionHaptic();
   closeLightbox();
 });
 
@@ -1482,7 +1559,10 @@ lightbox.addEventListener('click', (e) => {
 });
 
 // Selection header actions
-selectionClose.addEventListener('click', exitSelectionMode);
+selectionClose.addEventListener('click', () => {
+  triggerSelectionHaptic();
+  exitSelectionMode();
+});
 
 selectionPin.addEventListener('click', async () => {
   const ids = [...selectedIds];
@@ -1495,6 +1575,7 @@ selectionPin.addEventListener('click', async () => {
   const count = ids.length;
   exitSelectionMode();
   await loadItems();
+  triggerImpactHaptic('medium');
   showToast(count === 1 ? 'Toggled pin' : `Toggled pin for ${count} clips`);
 });
 
@@ -1532,6 +1613,7 @@ selectionShare.addEventListener('click', async () => {
   const status = await shareItems(items);
   if (status === 'shared') {
     exitSelectionMode();
+    triggerNotificationHaptic('success');
     showToast(items.length === 1 ? 'Shared clip' : `Shared ${items.length} clips`);
     return;
   }
@@ -1558,11 +1640,13 @@ selectionShare.addEventListener('click', async () => {
           : 'Chrome on Android rejected this file share. Downloaded instead.')
       : 'Downloaded file because sharing is unavailable.';
     exitSelectionMode();
+    triggerNotificationHaptic('warning');
     showToast(message);
     return;
   }
 
   if (fallbackStatus === 'empty') {
+    triggerNotificationHaptic('warning');
     showToast(selectionIncludesFiles(items)
       ? 'Document sharing unavailable on this device. Use download instead.'
       : 'Nothing shareable in selection');
@@ -1577,6 +1661,7 @@ selectionDelete.addEventListener('click', async () => {
   await deleteItems(ids);
   exitSelectionMode();
   await loadItems();
+  triggerNotificationHaptic('error');
   showToast(`Deleted ${count} clip${count > 1 ? 's' : ''}`);
 });
 
@@ -1586,6 +1671,7 @@ clearAllButton.addEventListener('click', async () => {
 
   await clearItems();
   await loadItems();
+  triggerNotificationHaptic('error');
   showToast('Cleared all clips');
 });
 
@@ -1611,9 +1697,10 @@ if (searchFilters) {
     const button = event.target.closest('button[data-filter]');
     if (!button) return;
     const key = button.dataset.filter;
-    if (!key) return;
+    if (!key || key === currentSearchFilter) return;
 
     currentSearchFilter = key;
+    triggerSelectionHaptic();
     syncSearchFilterChips();
     renderFilteredItems();
   });
