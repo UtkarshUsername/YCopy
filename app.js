@@ -807,15 +807,8 @@ function getShareFileMimeType(file = {}) {
   return inferMimeTypeFromFileName(file.name || '') || rawType || 'application/octet-stream';
 }
 
-function canShareData(data = {}) {
-  const hasPayload = Boolean(data?.text || data?.url || (Array.isArray(data?.files) && data.files.length));
-  if (!hasPayload) return false;
-  if (typeof navigator.canShare !== 'function') return true;
-  try {
-    return navigator.canShare(data);
-  } catch {
-    return false;
-  }
+function hasSharePayload(data = {}) {
+  return Boolean(data?.text || data?.url || (Array.isArray(data?.files) && data.files.length));
 }
 
 function createShareFiles(files = []) {
@@ -853,7 +846,7 @@ function buildSharePayloadVariants(items = []) {
     variants.push(textVariant);
   }
 
-  return variants.filter((variant) => canShareData(variant));
+  return variants.filter((variant) => hasSharePayload(variant));
 }
 
 function selectionIncludesFiles(items = []) {
