@@ -807,11 +807,12 @@ function getShareFileMimeType(file = {}) {
   return inferMimeTypeFromFileName(file.name || '') || rawType || 'application/octet-stream';
 }
 
-function canShareFiles(files = []) {
-  if (!files.length) return false;
+function canShareData(data = {}) {
+  const hasPayload = Boolean(data?.text || data?.url || (Array.isArray(data?.files) && data.files.length));
+  if (!hasPayload) return false;
   if (typeof navigator.canShare !== 'function') return true;
   try {
-    return navigator.canShare({ files });
+    return navigator.canShare(data);
   } catch {
     return false;
   }
@@ -828,6 +829,34 @@ function createShareFiles(files = []) {
     });
 }
 
+function collectShareFiles(items = []) {
+  return items.flatMap((item) => createShareFiles(item?.files || []));
+}
+
+function buildSharePayloadVariants(items = []) {
+  const title = items.length === 1 ? 'YCopy clip' : `${items.length} YCopy clips`;
+  const combinedText = buildCombinedClipboardText(items);
+  const shareUrl = items.length === 1 ? normalizeShareUrl(items[0]?.url || '') : '';
+  const shareFiles = collectShareFiles(items);
+  const variants = [];
+
+  if (shareFiles.length) {
+    variants.push({
+      title,
+      files: shareFiles,
+    });
+  }
+
+  const textVariant = { title };
+  if (combinedText) textVariant.text = combinedText;
+  if (shareUrl) textVariant.url = shareUrl;
+  if (textVariant.text || textVariant.url) {
+    variants.push(textVariant);
+  }
+
+  return variants.filter((variant) => canShareData(variant));
+}
+
 function selectionIncludesFiles(items = []) {
   return items.some((item) => Array.isArray(item?.files) && item.files.some((file) => file?.blob));
 }
@@ -835,33 +864,19 @@ function selectionIncludesFiles(items = []) {
 async function shareItems(items = []) {
   if (!items.length || !navigator.share) return 'unsupported';
 
-  const combinedText = buildCombinedClipboardText(items);
-  const shareData = {
-    title: items.length === 1 ? 'YCopy clip' : `${items.length} YCopy clips`,
-  };
+  const sharePayloadVariants = buildSharePayloadVariants(items);
+  if (!sharePayloadVariants.length) return 'unsupported';
 
-  if (combinedText) shareData.text = combinedText;
-
-  if (items.length === 1) {
-    const shareUrl = normalizeShareUrl(items[0]?.url || '');
-    if (shareUrl) shareData.url = shareUrl;
-
-    const shareFiles = createShareFiles(items[0]?.files || []);
-    if (canShareFiles(shareFiles)) {
-      shareData.files = shareFiles;
+  for (const shareData of sharePayloadVariants) {
+    try {
+      await navigator.share(shareData);
+      return 'shared';
+    } catch (error) {
+      if (error?.name === 'AbortError') return 'cancelled';
     }
   }
 
-  const hasPayload = Boolean(shareData.text || shareData.url || (shareData.files && shareData.files.length));
-  if (!hasPayload) return 'unsupported';
-
-  try {
-    await navigator.share(shareData);
-    return 'shared';
-  } catch (error) {
-    if (error?.name === 'AbortError') return 'cancelled';
-    return 'unsupported';
-  }
+  return 'unsupported';
 }
 
 async function copyForShareFallback(text) {
