@@ -842,7 +842,6 @@ function buildSharePayloadVariants(items = []) {
 
   if (shareFiles.length) {
     variants.push({
-      title,
       files: shareFiles,
     });
   }
