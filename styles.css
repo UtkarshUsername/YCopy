@@ -26,13 +26,17 @@
   --radius: 12px;
   --radius-sm: 8px;
   --search-sticky-top: 45px;
+  --app-height: 100vh;
+  --modal-viewport-height: 100vh;
+  --modal-viewport-top: 0px;
+  --keyboard-offset: 0px;
 }
 
 body {
   font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
-  min-height: 100vh;
+  min-height: var(--app-height);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -697,7 +701,10 @@ button.ghost:hover {
 /* ── Modal ── */
 .modal-overlay {
   position: fixed;
-  inset: 0;
+  top: var(--modal-viewport-top);
+  right: 0;
+  left: 0;
+  height: var(--modal-viewport-height);
   background: rgba(26, 29, 46, 0.4);
   backdrop-filter: blur(6px);
   z-index: 100;
@@ -706,6 +713,7 @@ button.ghost:hover {
   padding: 1rem;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-block-end: calc(1rem + var(--keyboard-offset));
   animation: overlayIn 0.2s ease;
 }
 
@@ -719,7 +727,7 @@ button.ghost:hover {
   padding: 1.5rem;
   width: 100%;
   max-width: 400px;
-  max-height: calc(100vh - 2rem);
+  max-height: calc(var(--modal-viewport-height) - 2rem);
   overflow-y: auto;
   overscroll-behavior: contain;
   box-shadow: var(--shadow-lg);

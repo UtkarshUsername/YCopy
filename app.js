@@ -81,6 +81,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   autoExpireMs: AUTO_EXPIRE_DISABLED_MS,
   maxEntries: MAX_ENTRIES_UNLIMITED,
 });
+const KEYBOARD_OPEN_THRESHOLD = 80;
 const FILE_EXTENSION_MIME_TYPES = Object.freeze({
   csv: 'text/csv',
   doc: 'application/msword',
@@ -138,6 +139,23 @@ function syncSearchStickyOffset() {
   if (!activeHeader) return;
   const headerHeight = Math.ceil(activeHeader.getBoundingClientRect().height);
   document.documentElement.style.setProperty('--search-sticky-top', `${headerHeight}px`);
+}
+
+function syncViewportMetrics() {
+  const visualViewport = window.visualViewport;
+  const layoutViewportHeight = Math.round(window.innerHeight || document.documentElement.clientHeight || 0);
+  const visibleViewportHeight = Math.round(visualViewport?.height || layoutViewportHeight);
+  const viewportOffsetTop = Math.max(0, Math.round(visualViewport?.offsetTop || 0));
+  const keyboardHeight = visualViewport
+    ? Math.max(0, Math.round(layoutViewportHeight - visualViewport.height - visualViewport.offsetTop))
+    : 0;
+  const effectiveKeyboardHeight = keyboardHeight >= KEYBOARD_OPEN_THRESHOLD ? keyboardHeight : 0;
+  const effectiveViewportHeight = Math.max(visibleViewportHeight, 0);
+
+  document.documentElement.style.setProperty('--app-height', `${effectiveViewportHeight}px`);
+  document.documentElement.style.setProperty('--modal-viewport-height', `${effectiveViewportHeight}px`);
+  document.documentElement.style.setProperty('--modal-viewport-top', `${viewportOffsetTop}px`);
+  document.documentElement.style.setProperty('--keyboard-offset', `${effectiveKeyboardHeight}px`);
 }
 
 function escapeHtml(value = '') {
@@ -559,8 +577,13 @@ function openOverlay(overlay) {
 
 function closeOverlay(overlay) {
   if (!overlay || overlay.hidden) return;
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement && overlay.contains(activeElement)) {
+    activeElement.blur();
+  }
   overlay.hidden = true;
   unlockBodyScroll();
+  window.setTimeout(syncViewportMetrics, 0);
 }
 
 function openAddModal() {
@@ -1625,7 +1648,11 @@ configureSelectionShareButton();
 syncSettingsForm();
 startAutoExpireTimer();
 syncSearchStickyOffset();
+syncViewportMetrics();
 window.addEventListener('resize', syncSearchStickyOffset);
+window.addEventListener('resize', syncViewportMetrics);
+window.visualViewport?.addEventListener('resize', syncViewportMetrics);
+window.visualViewport?.addEventListener('scroll', syncViewportMetrics);
 document.fonts?.ready?.then(syncSearchStickyOffset);
 
 if ('serviceWorker' in navigator) {
