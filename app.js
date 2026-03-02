@@ -96,6 +96,36 @@ const FILE_EXTENSION_MIME_TYPES = Object.freeze({
   xls: 'application/vnd.ms-excel',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 });
+const CHROMIUM_WEB_SHARE_MIME_TYPES = new Set([
+  'application/pdf',
+  'audio/flac',
+  'audio/mp3',
+  'audio/mpeg',
+  'audio/ogg',
+  'audio/wav',
+  'audio/webm',
+  'audio/x-m4a',
+  'image/avif',
+  'image/bmp',
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/svg+xml',
+  'image/tiff',
+  'image/webp',
+  'image/x-icon',
+  'image/x-ms-bmp',
+  'image/x-xbitmap',
+  'text/comma-separated-values',
+  'text/css',
+  'text/csv',
+  'text/html',
+  'text/plain',
+  'video/mp4',
+  'video/mpeg',
+  'video/ogg',
+  'video/webm',
+]);
 let appSettings = { ...DEFAULT_SETTINGS };
 let autoExpireIntervalId = null;
 let autoExpireInProgress = false;
@@ -613,6 +643,20 @@ function buildFilePreview(files = []) {
   return `<div class="file-preview">${parts}</div>`;
 }
 
+function downloadBlobFile(blob, fileName = 'download') {
+  if (!(blob instanceof Blob)) return false;
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  return true;
+}
+
 function isImageFile(file) {
   const type = (file?.type || file?.blob?.type || '').toString().toLowerCase();
   return type.startsWith('image/');
@@ -784,6 +828,21 @@ function buildCombinedClipboardText(items = []) {
     .join('\n\n');
 }
 
+function isChromiumWebShareFileType(file = {}) {
+  const mimeType = getShareFileMimeType(file);
+  return CHROMIUM_WEB_SHARE_MIME_TYPES.has(mimeType);
+}
+
+function isOfficeDocumentFile(file = {}) {
+  const mimeType = getShareFileMimeType(file);
+  return mimeType === 'application/msword'
+    || mimeType === 'application/vnd.ms-excel'
+    || mimeType === 'application/vnd.ms-powerpoint'
+    || mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
 function normalizeShareUrl(value = '') {
   if (!value) return '';
   try {
@@ -851,6 +910,15 @@ function buildSharePayloadVariants(items = []) {
 
 function selectionIncludesFiles(items = []) {
   return items.some((item) => Array.isArray(item?.files) && item.files.some((file) => file?.blob));
+}
+
+function downloadSingleSelectedFile(items = []) {
+  if (items.length !== 1) return false;
+  const files = items[0]?.files || [];
+  if (files.length !== 1) return false;
+  const [file] = files;
+  if (!file?.blob) return false;
+  return downloadBlobFile(file.blob, file.name || 'attachment');
 }
 
 async function shareItems(items = []) {
@@ -1421,6 +1489,18 @@ selectionShare.addEventListener('click', async () => {
   const fallbackStatus = await copyForShareFallback(fallbackText);
   if (fallbackStatus === 'copied') {
     exitSelectionMode();
+    return;
+  }
+
+  if (fallbackStatus === 'empty' && downloadSingleSelectedFile(items)) {
+    const file = items[0]?.files?.[0];
+    const message = file && !isChromiumWebShareFileType(file)
+      ? (isOfficeDocumentFile(file)
+        ? 'Chrome on Android cannot share DOCX and other Office files directly. Downloaded instead.'
+        : 'Chrome on Android cannot share this file type directly. Downloaded instead.')
+      : 'Downloaded file because sharing is unavailable.';
+    exitSelectionMode();
+    showToast(message);
     return;
   }
 
