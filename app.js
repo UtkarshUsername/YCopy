@@ -1,6 +1,13 @@
-const DB_NAME = 'clip-vault';
-const STORE = 'items';
-const DB_VERSION = 1;
+import {
+  DEFAULT_SETTINGS as STORE_DEFAULT_SETTINGS,
+  clearAllClips,
+  deleteClips,
+  getClips,
+  normalizeSettings,
+  repairStoredData,
+  saveClipRecord,
+  saveIncomingClip,
+} from './clip-store.mjs';
 
 const form = document.getElementById('add-form');
 const list = document.getElementById('items');
@@ -78,6 +85,7 @@ const AUTO_EXPIRE_LABELS = {
   [90 * DAY_IN_MS]: '90 days',
 };
 const DEFAULT_SETTINGS = Object.freeze({
+  ...STORE_DEFAULT_SETTINGS,
   autoExpireMs: AUTO_EXPIRE_DISABLED_MS,
   maxEntries: MAX_ENTRIES_UNLIMITED,
 });
@@ -131,6 +139,7 @@ let appSettings = { ...DEFAULT_SETTINGS };
 let autoExpireIntervalId = null;
 let autoExpireInProgress = false;
 let maxEntriesPruneInProgress = false;
+let dataRepairPromise = null;
 
 function syncSearchStickyOffset() {
   const activeHeader = headerSelection && !headerSelection.hidden
@@ -204,8 +213,10 @@ function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(raw);
+    const parsed = normalizeSettings(JSON.parse(raw));
     return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
       autoExpireMs: normalizeAutoExpireMs(parsed?.autoExpireMs),
       maxEntries: normalizeMaxEntries(parsed?.maxEntries),
     };
@@ -265,18 +276,14 @@ function getExpiryStatus(item, now = Date.now()) {
 
 appSettings = loadSettings();
 
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+async function ensureDataReady() {
+  if (!dataRepairPromise) {
+    dataRepairPromise = repairStoredData().catch((error) => {
+      dataRepairPromise = null;
+      throw error;
+    });
+  }
+  return dataRepairPromise;
 }
 
 function normalizeStoredText(value = '') {
@@ -310,119 +317,39 @@ function getItemDedupSignature(item = {}) {
 }
 
 async function addItem(item) {
-  const normalizedItem = {
+  await ensureDataReady();
+  return saveIncomingClip({
     ...item,
     text: normalizeStoredText(item.text),
     url: normalizeStoredUrl(item.url),
     files: normalizeStoredFiles(item.files),
-  };
-  const incomingSignature = getItemDedupSignature(normalizedItem);
-
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    const store = tx.objectStore(STORE);
-    const existingRequest = store.getAll();
-    let settled = false;
-
-    const rejectOnce = (error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    };
-
-    const resolveOnce = (result) => {
-      if (settled) return;
-      settled = true;
-      resolve(result);
-    };
-
-    existingRequest.onsuccess = () => {
-      const existingItems = existingRequest.result || [];
-      const existing = existingItems.find((savedItem) => getItemDedupSignature(savedItem) === incomingSignature);
-      const now = Date.now();
-
-      if (existing) {
-        const updatedItem = {
-          ...existing,
-          text: normalizedItem.text,
-          url: normalizedItem.url,
-          files: normalizedItem.files,
-          createdAt: now,
-        };
-        if (Number.isFinite(existing.pinnedAt) && existing.pinnedAt > 0) {
-          updatedItem.pinnedAt = now;
-        }
-        const putRequest = store.put(updatedItem);
-        putRequest.onsuccess = () => resolveOnce({ id: existing.id, deduplicated: true });
-        putRequest.onerror = () => rejectOnce(putRequest.error || tx.error);
-        return;
-      }
-
-      const addRequest = store.add({
-        ...normalizedItem,
-        createdAt: Number.isFinite(normalizedItem.createdAt) ? normalizedItem.createdAt : now,
-        pinnedAt: normalizedItem.pinnedAt ?? null,
-      });
-      addRequest.onsuccess = () => resolveOnce({ id: Number(addRequest.result), deduplicated: false });
-      addRequest.onerror = () => rejectOnce(addRequest.error || tx.error);
-    };
-
-    existingRequest.onerror = () => rejectOnce(existingRequest.error || tx.error);
-    tx.onerror = () => rejectOnce(tx.error);
+    captureSource: item.captureSource || 'manual',
   });
 }
 
 async function getItems() {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const request = tx.objectStore(STORE).getAll();
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
+  await ensureDataReady();
+  return getClips();
 }
 
 async function deleteItem(id) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  return deleteItems([id]);
 }
 
 async function deleteItems(ids = []) {
   if (!ids.length) return;
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    const store = tx.objectStore(STORE);
-    ids.forEach((id) => store.delete(id));
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await ensureDataReady();
+  return deleteClips(ids);
 }
 
 async function updateItem(item) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(item);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await ensureDataReady();
+  return saveClipRecord(item);
 }
 
 async function clearItems() {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await ensureDataReady();
+  return clearAllClips();
 }
 
 function getAutoExpireCutoff(now = Date.now()) {
@@ -440,7 +367,7 @@ async function pruneExpiredItems() {
     const items = await getItems();
     const expiredIds = items
       .filter((item) => {
-        if (!Number.isFinite(item?.id)) return false;
+        if (!item?.id) return false;
         if (isItemPinned(item)) return false;
         return Number.isFinite(item?.createdAt) && item.createdAt <= cutoff;
       })
@@ -465,11 +392,11 @@ function getOverflowItemsToDelete(items = []) {
       const aCreatedAt = Number.isFinite(a?.createdAt) ? a.createdAt : 0;
       const bCreatedAt = Number.isFinite(b?.createdAt) ? b.createdAt : 0;
       if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt;
-      return (Number(a?.id) || 0) - (Number(b?.id) || 0);
+      return (a?.id || '').localeCompare(b?.id || '');
     })
     .slice(0, overflow)
     .map((item) => item.id)
-    .filter((id) => Number.isFinite(id));
+    .filter(Boolean);
 }
 
 async function pruneItemsOverLimit() {
@@ -1033,6 +960,12 @@ function isItemPinned(item) {
   return getPinnedTimestamp(item) > 0;
 }
 
+function getItemSortTimestamp(item) {
+  if (Number.isFinite(item?.updatedAt)) return item.updatedAt;
+  if (Number.isFinite(item?.createdAt)) return item.createdAt;
+  return 0;
+}
+
 function sortItemsForDisplay(items = []) {
   return [...items].sort((a, b) => {
     const aPinnedAt = getPinnedTimestamp(a);
@@ -1041,7 +974,7 @@ function sortItemsForDisplay(items = []) {
     const bPinned = bPinnedAt > 0;
     if (aPinned !== bPinned) return aPinned ? -1 : 1;
     if (aPinned && bPinned && aPinnedAt !== bPinnedAt) return bPinnedAt - aPinnedAt;
-    return b.createdAt - a.createdAt;
+    return getItemSortTimestamp(b) - getItemSortTimestamp(a);
   });
 }
 
@@ -1057,10 +990,12 @@ function rebuildSearchIndex(items = []) {
     threshold: 0.35,
     minMatchCharLength: 2,
     keys: [
-      { name: 'text', weight: 0.45 },
-      { name: 'url', weight: 0.35 },
-      { name: 'files.name', weight: 0.15 },
-      { name: 'files.type', weight: 0.05 },
+      { name: 'text', weight: 0.25 },
+      { name: 'url', weight: 0.2 },
+      { name: 'meta.title', weight: 0.2 },
+      { name: 'meta.tags', weight: 0.15 },
+      { name: 'capture.plainText', weight: 0.15 },
+      { name: 'files.name', weight: 0.05 },
     ],
   });
 }
@@ -1108,7 +1043,15 @@ function filterItems(items = [], query = '', filter = currentSearchFilter) {
         const fileText = (item.files || [])
           .map((file) => `${file?.name || ''} ${file?.type || ''}`)
           .join(' ');
-        const haystack = `${item.text || ''}\n${item.url || ''}\n${fileText}`.toLowerCase();
+        const tagText = Array.isArray(item?.meta?.tags) ? item.meta.tags.join(' ') : '';
+        const haystack = [
+          item.text || '',
+          item.url || '',
+          item?.meta?.title || '',
+          tagText,
+          item?.capture?.plainText || '',
+          fileText,
+        ].join('\n').toLowerCase();
         return haystack.includes(needle);
       });
     }
@@ -1151,7 +1094,7 @@ function updateSelectionUI() {
   syncSearchStickyOffset();
   selectionCount.textContent = selectedIds.size;
   document.querySelectorAll('.item[data-item-id]').forEach((el) => {
-    const id = Number(el.dataset.itemId);
+    const id = el.dataset.itemId;
     el.classList.toggle('item-selected', selectedIds.has(id));
   });
 }
@@ -1386,7 +1329,7 @@ function clearSharedParamsFromUrl() {
 function getLatestItem(items = []) {
   return items.reduce((latest, item) => {
     if (!latest) return item;
-    return item.createdAt > latest.createdAt ? item : latest;
+    return getItemSortTimestamp(item) > getItemSortTimestamp(latest) ? item : latest;
   }, null);
 }
 
@@ -1394,8 +1337,8 @@ async function handleSharedContent(items) {
   const params = new URLSearchParams(window.location.search);
   if (!params.has('shared')) return;
 
-  const sharedId = Number(params.get('sharedId'));
-  const sharedItem = Number.isInteger(sharedId)
+  const sharedId = params.get('sharedId')?.trim() || '';
+  const sharedItem = sharedId
     ? (items.find((item) => item.id === sharedId) || getLatestItem(items))
     : getLatestItem(items);
   const status = sharedItem
@@ -1669,6 +1612,7 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
       const registration = await navigator.serviceWorker.register('service-worker.js', {
+        type: 'module',
         updateViaCache: 'none',
       });
 

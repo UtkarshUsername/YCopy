@@ -16,7 +16,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker
-          .register('service-worker.js', { updateViaCache: 'none' })
+          .register('service-worker.js', { type: 'module', updateViaCache: 'none' })
           .then((registration) => registration.update())
           .catch(() => {});
       }
