@@ -8,7 +8,7 @@ import {
 
 // Bump this value on every production deploy.
 // The cache name is derived from this constant so it updates automatically.
-const CACHE_VERSION = 'v45';
+const CACHE_VERSION = 'v46';
 const CACHE_PREFIX = 'ycopy-static';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
@@ -20,6 +20,7 @@ const CORE_ASSETS = [
   'styles.css',
   'app.js',
   'clip-store.mjs',
+  'github-sync.mjs',
   'fuse.min.js',
   'manifest.json',
   'icon.svg',

@@ -14,6 +14,9 @@
         <button id="open-settings" class="header-btn" aria-label="Open settings" title="Settings">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
+        <button id="sync-now" class="header-btn" aria-label="Sync to GitHub" title="Sync to GitHub">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v10"/><path d="m8 9 4 4 4-4"/><path d="M5 21h14"/></svg>
+        </button>
         <button id="clear-all" class="header-btn header-btn-danger" aria-label="Clear all" title="Clear all">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
         </button>
@@ -126,8 +129,38 @@
               placeholder="0"
             />
           </label>
+          <div class="settings-section">
+            <div class="settings-section-head">
+              <h3>GitHub Sync</h3>
+              <label class="settings-toggle" for="markdown-sync-enabled">
+                <input id="markdown-sync-enabled" name="markdown-sync-enabled" type="checkbox" />
+                <span>Enable</span>
+              </label>
+            </div>
+            <label>
+              GitHub owner
+              <input id="github-owner" name="github-owner" type="text" placeholder="your-username" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            </label>
+            <label>
+              Repository
+              <input id="github-repo" name="github-repo" type="text" placeholder="your-repo" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            </label>
+            <label>
+              Branch
+              <input id="github-branch" name="github-branch" type="text" placeholder="main" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            </label>
+            <label>
+              Personal access token
+              <input id="github-token" name="github-token" type="password" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" spellcheck="false" />
+            </label>
+            <p class="settings-note settings-note-compact">YCopy sync writes only Markdown clip files. Token needs repository contents write access.</p>
+            <p id="sync-status" class="sync-status" aria-live="polite">Git sync is off.</p>
+          </div>
           <p class="settings-note">Pinned clips are never auto-cleared by time and are excluded from max count. When max is reached, oldest unpinned clips are removed first.</p>
-          <button type="submit">Save settings</button>
+          <div class="settings-actions">
+            <button type="submit">Save settings</button>
+            <button id="sync-from-settings" type="button" class="secondary-btn">Sync now</button>
+          </div>
         </form>
       </div>
     </div>

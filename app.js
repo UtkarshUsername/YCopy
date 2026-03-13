@@ -4,15 +4,23 @@ import {
   deleteClips,
   getClips,
   normalizeSettings,
+  persistClipRecord,
   repairStoredData,
   saveClipRecord,
   saveIncomingClip,
 } from './clip-store.mjs';
+import {
+  DEFAULT_GITHUB_SYNC_SETTINGS,
+  normalizeGitHubSyncSettings,
+  syncClipsToGitHub,
+  validateGitHubSyncSettings,
+} from './github-sync.mjs';
 
 const form = document.getElementById('add-form');
 const list = document.getElementById('items');
 const emptyState = document.getElementById('empty-state');
 const clearAllButton = document.getElementById('clear-all');
+const syncNowButton = document.getElementById('sync-now');
 const searchInput = document.getElementById('search');
 const searchFilters = document.getElementById('search-filters');
 const toast = document.getElementById('toast');
@@ -25,6 +33,13 @@ const settingsClose = document.getElementById('settings-close');
 const settingsForm = document.getElementById('settings-form');
 const expiryDurationSelect = document.getElementById('expiry-duration');
 const maxEntriesInput = document.getElementById('max-entries');
+const markdownSyncEnabledInput = document.getElementById('markdown-sync-enabled');
+const githubOwnerInput = document.getElementById('github-owner');
+const githubRepoInput = document.getElementById('github-repo');
+const githubBranchInput = document.getElementById('github-branch');
+const githubTokenInput = document.getElementById('github-token');
+const syncStatus = document.getElementById('sync-status');
+const syncFromSettingsButton = document.getElementById('sync-from-settings');
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
 const lightboxClose = document.getElementById('lightbox-close');
@@ -62,6 +77,7 @@ const MAX_FILE_NAME_LENGTH = 56;
 const EMPTY_STATE_FALLBACK_TEXT = 'No clips yet. Tap + to add one or share to YCopy.';
 const DAY_IN_MS = 86400000;
 const SETTINGS_STORAGE_KEY = 'ycopy-settings';
+const GITHUB_SYNC_STORAGE_KEY = 'ycopy-github-sync';
 const AUTO_EXPIRE_DISABLED_MS = 0;
 const MAX_ENTRIES_UNLIMITED = 0;
 const MAX_ENTRIES_MIN = 0;
@@ -140,6 +156,9 @@ let autoExpireIntervalId = null;
 let autoExpireInProgress = false;
 let maxEntriesPruneInProgress = false;
 let dataRepairPromise = null;
+let syncInProgress = false;
+let gitHubSyncSettings = { ...DEFAULT_GITHUB_SYNC_SETTINGS };
+let lastSyncMessage = 'Git sync is off.';
 
 function syncSearchStickyOffset() {
   const activeHeader = headerSelection && !headerSelection.hidden
@@ -233,6 +252,33 @@ function saveSettings() {
   }
 }
 
+function loadGitHubSyncSettings() {
+  try {
+    const raw = localStorage.getItem(GITHUB_SYNC_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_GITHUB_SYNC_SETTINGS };
+    return {
+      ...DEFAULT_GITHUB_SYNC_SETTINGS,
+      ...normalizeGitHubSyncSettings(JSON.parse(raw)),
+    };
+  } catch {
+    return { ...DEFAULT_GITHUB_SYNC_SETTINGS };
+  }
+}
+
+function saveGitHubSyncSettings() {
+  try {
+    localStorage.setItem(GITHUB_SYNC_STORAGE_KEY, JSON.stringify(gitHubSyncSettings));
+  } catch {
+    // Ignore storage failures; settings stay in-memory for this session.
+  }
+}
+
+function getMaskedTokenLabel(token = '') {
+  if (!token) return 'No token saved';
+  const visibleTail = token.slice(-4);
+  return `Token saved (${visibleTail.padStart(4, '•')})`;
+}
+
 function getAutoExpireLabel(autoExpireMs = appSettings.autoExpireMs) {
   return AUTO_EXPIRE_LABELS[autoExpireMs] || AUTO_EXPIRE_LABELS[AUTO_EXPIRE_DISABLED_MS];
 }
@@ -242,6 +288,77 @@ function syncSettingsForm() {
   expiryDurationSelect.value = String(appSettings.autoExpireMs);
   if (maxEntriesInput) {
     maxEntriesInput.value = String(appSettings.maxEntries);
+  }
+  if (markdownSyncEnabledInput) {
+    markdownSyncEnabledInput.checked = Boolean(appSettings.markdownSyncEnabled);
+  }
+  if (githubOwnerInput) {
+    githubOwnerInput.value = gitHubSyncSettings.repoOwner;
+  }
+  if (githubRepoInput) {
+    githubRepoInput.value = gitHubSyncSettings.repoName;
+  }
+  if (githubBranchInput) {
+    githubBranchInput.value = gitHubSyncSettings.branch;
+  }
+  if (githubTokenInput) {
+    githubTokenInput.value = gitHubSyncSettings.token;
+    githubTokenInput.placeholder = gitHubSyncSettings.token ? getMaskedTokenLabel(gitHubSyncSettings.token) : 'github_pat_...';
+  }
+  updateSyncControls();
+}
+
+function readGitHubSyncDraft() {
+  return normalizeGitHubSyncSettings({
+    repoOwner: githubOwnerInput?.value ?? gitHubSyncSettings.repoOwner,
+    repoName: githubRepoInput?.value ?? gitHubSyncSettings.repoName,
+    branch: githubBranchInput?.value ?? gitHubSyncSettings.branch,
+    token: githubTokenInput?.value ?? gitHubSyncSettings.token,
+  });
+}
+
+function getSyncValidationResult({ useDraft = false } = {}) {
+  const markdownSyncEnabled = useDraft
+    ? Boolean(markdownSyncEnabledInput?.checked)
+    : Boolean(appSettings.markdownSyncEnabled);
+
+  if (!markdownSyncEnabled) {
+    return {
+      isValid: false,
+      message: 'Git sync is off.',
+    };
+  }
+
+  const validation = validateGitHubSyncSettings(useDraft ? readGitHubSyncDraft() : gitHubSyncSettings);
+  if (!validation.isValid) {
+    return {
+      isValid: false,
+      message: validation.errors[0],
+    };
+  }
+
+  return {
+    isValid: true,
+    message: lastSyncMessage === 'Git sync is off.' ? 'Ready to sync to GitHub.' : lastSyncMessage,
+  };
+}
+
+function updateSyncControls() {
+  const validation = getSyncValidationResult();
+  const draftValidation = getSyncValidationResult({ useDraft: true });
+  if (syncStatus) {
+    syncStatus.textContent = syncInProgress
+      ? 'Syncing with GitHub…'
+      : settingsOverlay && !settingsOverlay.hidden
+        ? draftValidation.message
+        : validation.message;
+  }
+  if (syncNowButton) {
+    syncNowButton.disabled = syncInProgress || !validation.isValid;
+    syncNowButton.title = syncInProgress ? 'Sync in progress' : validation.message;
+  }
+  if (syncFromSettingsButton) {
+    syncFromSettingsButton.disabled = syncInProgress || !draftValidation.isValid;
   }
 }
 
@@ -275,6 +392,7 @@ function getExpiryStatus(item, now = Date.now()) {
 }
 
 appSettings = loadSettings();
+gitHubSyncSettings = loadGitHubSyncSettings();
 
 async function ensureDataReady() {
   if (!dataRepairPromise) {
@@ -332,6 +450,68 @@ async function updateItem(item) {
 async function clearItems() {
   await ensureDataReady();
   return clearAllClips();
+}
+
+async function persistSyncedClip(item) {
+  await ensureDataReady();
+  return persistClipRecord(item);
+}
+
+function getSyncSuccessMessage(result) {
+  const totalChanges = (result?.additions || 0) + (result?.deletions || 0);
+  if (!totalChanges) return 'GitHub already matches local clips';
+  if (result?.commitUrl) {
+    return totalChanges === 1
+      ? 'Synced 1 change to GitHub'
+      : `Synced ${totalChanges} changes to GitHub`;
+  }
+  return totalChanges === 1
+    ? 'Prepared 1 GitHub change'
+    : `Prepared ${totalChanges} GitHub changes`;
+}
+
+async function runGitSync({ closeSettings = false } = {}) {
+  if (syncInProgress) return;
+
+  const validation = getSyncValidationResult();
+  if (!validation.isValid) {
+    showToast(validation.message);
+    if (!appSettings.markdownSyncEnabled) {
+      openSettingsModal();
+    }
+    return;
+  }
+
+  syncInProgress = true;
+  lastSyncMessage = 'Syncing with GitHub…';
+  updateSyncControls();
+
+  try {
+    await ensureDataReady();
+    const clips = await getClips({ includeDeleted: true });
+    const result = await syncClipsToGitHub({
+      config: gitHubSyncSettings,
+      clips,
+      persistClip: persistSyncedClip,
+    });
+    lastSyncMessage = result.status === 'noop'
+      ? 'GitHub already matches local clips.'
+      : result.commitUrl
+        ? `Last sync succeeded. ${result.commitUrl}`
+        : 'Last sync succeeded.';
+    await loadItems({ skipPrune: true });
+    if (closeSettings) {
+      closeSettingsModal();
+    }
+    showToast(getSyncSuccessMessage(result));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'GitHub sync failed';
+    lastSyncMessage = `Sync failed: ${message}`;
+    showToast(lastSyncMessage);
+  } finally {
+    syncInProgress = false;
+    updateSyncControls();
+  }
 }
 
 function getAutoExpireCutoff(now = Date.now()) {
@@ -1365,6 +1545,15 @@ fab.addEventListener('click', () => {
   openAddModal();
 });
 
+syncNowButton?.addEventListener('click', async () => {
+  if (!appSettings.markdownSyncEnabled) {
+    openSettingsModal();
+    showToast('Enable Git sync in Settings first');
+    return;
+  }
+  await runGitSync();
+});
+
 openSettingsButton?.addEventListener('click', () => {
   openSettingsModal();
 });
@@ -1385,32 +1574,70 @@ settingsOverlay?.addEventListener('click', (e) => {
   if (e.target === settingsOverlay) closeSettingsModal();
 });
 
+[markdownSyncEnabledInput, githubOwnerInput, githubRepoInput, githubBranchInput, githubTokenInput].forEach((field) => {
+  field?.addEventListener('input', updateSyncControls);
+  field?.addEventListener('change', updateSyncControls);
+});
+
+syncFromSettingsButton?.addEventListener('click', async () => {
+  const draftSettings = normalizeGitHubSyncSettings({
+    repoOwner: githubOwnerInput?.value,
+    repoName: githubRepoInput?.value,
+    branch: githubBranchInput?.value,
+    token: githubTokenInput?.value,
+  });
+  appSettings = {
+    ...appSettings,
+    markdownSyncEnabled: Boolean(markdownSyncEnabledInput?.checked),
+  };
+  gitHubSyncSettings = draftSettings;
+  saveSettings();
+  saveGitHubSyncSettings();
+  updateSyncControls();
+  await runGitSync({ closeSettings: true });
+});
+
 settingsForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const nextAutoExpireMs = normalizeAutoExpireMs(expiryDurationSelect?.value);
   const nextMaxEntries = normalizeMaxEntries(maxEntriesInput?.value);
+  const nextMarkdownSyncEnabled = Boolean(markdownSyncEnabledInput?.checked);
+  const nextGitHubSyncSettings = normalizeGitHubSyncSettings({
+    repoOwner: githubOwnerInput?.value,
+    repoName: githubRepoInput?.value,
+    branch: githubBranchInput?.value,
+    token: githubTokenInput?.value,
+  });
   appSettings = {
     ...appSettings,
     autoExpireMs: nextAutoExpireMs,
     maxEntries: nextMaxEntries,
+    markdownSyncEnabled: nextMarkdownSyncEnabled,
   };
+  gitHubSyncSettings = nextGitHubSyncSettings;
   saveSettings();
+  saveGitHubSyncSettings();
   startAutoExpireTimer();
   const removedCountByExpiry = await pruneExpiredItems();
   const removedCountByLimit = await pruneItemsOverLimit();
   const removedCount = removedCountByExpiry + removedCountByLimit;
   await loadItems({ skipPrune: true });
   closeSettingsModal();
+  lastSyncMessage = nextMarkdownSyncEnabled
+    ? getSyncValidationResult().message
+    : 'Git sync is off.';
+  updateSyncControls();
 
   const autoClearLabel = nextAutoExpireMs === AUTO_EXPIRE_DISABLED_MS
     ? 'Off'
     : getAutoExpireLabel(nextAutoExpireMs);
   const maxEntriesLabel = getMaxEntriesLabel(nextMaxEntries);
+  const gitSyncLabel = nextMarkdownSyncEnabled ? 'Git sync on' : 'Git sync off';
   if (removedCount > 0) {
-    showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}. Removed ${getClipCountLabel(removedCount)}.`);
+    showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}, ${gitSyncLabel}. Removed ${getClipCountLabel(removedCount)}.`);
     return;
   }
-  showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}.`);
+  showToast(`Saved: auto-clear ${autoClearLabel}, max ${maxEntriesLabel}, ${gitSyncLabel}.`);
 });
 
 list.addEventListener('click', (e) => {

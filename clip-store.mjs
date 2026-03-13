@@ -449,6 +449,16 @@ export async function saveClipRecord(clipLike) {
   return hydrateClip(finalized, assets);
 }
 
+export async function persistClipRecord(clipLike) {
+  const db = await openDb();
+  const clip = stripHydratedClip(clipLike);
+  const assets = Array.isArray(clipLike?.assets)
+    ? clipLike.assets.map(normalizeStoredAsset)
+    : await getAssetsForClipIds(db, clip.fileIds);
+  await putClipAndAssets(db, clip, assets);
+  return hydrateClip(clip, assets);
+}
+
 export async function deleteClips(ids = []) {
   const normalizedIds = ids
     .map((id) => id?.toString().trim())

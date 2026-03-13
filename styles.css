@@ -775,6 +775,77 @@ button.ghost:hover {
   margin-bottom: 0.7rem;
 }
 
+.settings-note-compact {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.settings-section {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid rgba(26, 29, 46, 0.08);
+}
+
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-section-head h3 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.settings-toggle input {
+  width: auto;
+  min-height: auto;
+  margin: 0;
+}
+
+.sync-status {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(61, 90, 241, 0.08);
+  color: var(--accent);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.settings-actions > * {
+  flex: 1 1 10rem;
+}
+
+.secondary-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid rgba(61, 90, 241, 0.2);
+  box-shadow: none;
+}
+
+.secondary-btn:hover {
+  background: rgba(61, 90, 241, 0.08);
+}
+
 @keyframes overlayIn {
   from { opacity: 0; }
   to { opacity: 1; }
