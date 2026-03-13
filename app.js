@@ -298,24 +298,6 @@ function normalizeStoredFiles(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
-function getFileDedupSignature(file = {}) {
-  const blobSize = Number.isFinite(file?.blob?.size) ? file.blob.size : null;
-  const rawSize = Number.isFinite(file?.size) ? file.size : null;
-  return JSON.stringify([
-    file?.name || '',
-    file?.type || '',
-    blobSize ?? rawSize ?? 0,
-  ]);
-}
-
-function getItemDedupSignature(item = {}) {
-  return JSON.stringify([
-    normalizeStoredText(item.text),
-    normalizeStoredUrl(item.url),
-    normalizeStoredFiles(item.files).map(getFileDedupSignature),
-  ]);
-}
-
 async function addItem(item) {
   await ensureDataReady();
   return saveIncomingClip({

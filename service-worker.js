@@ -95,6 +95,7 @@ function isStaticAssetRequest(request, url) {
   return (
     url.pathname.endsWith('.css') ||
     url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.mjs') ||
     url.pathname.endsWith('.svg') ||
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.jpg') ||

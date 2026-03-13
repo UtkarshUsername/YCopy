@@ -374,10 +374,19 @@ export async function saveIncomingClip({
   });
 
   if (existingClip) {
+    const existingAssets = assetsByClipId.get(existingClip.id) || [];
+    const refreshedClip = await finalizeClipRecord({
+      ...existingClip,
+      text: normalizedText,
+      url: normalizedUrl,
+      updatedAt: createdAt,
+      pinnedAt: existingClip.pinnedAt ? createdAt : existingClip.pinnedAt,
+    }, existingAssets, { markDirty: true });
+    await putClipAndAssets(db, refreshedClip, existingAssets);
     return {
-      id: existingClip.id,
+      id: refreshedClip.id,
       deduplicated: true,
-      createdAt: existingClip.createdAt,
+      createdAt: refreshedClip.createdAt,
     };
   }
 
