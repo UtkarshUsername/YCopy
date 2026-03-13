@@ -109,12 +109,35 @@ export async function syncClipsToGitHub({
 
   const settings = validation.settings;
   const syncedAt = Date.now();
-  const remoteHead = await fetchGitHubBranchHead(settings, fetchImpl);
-  const remoteFiles = await fetchGitHubTree(settings, fetchImpl);
+  let remoteHead = '';
+  let remoteFiles = new Map();
+  let isEmptyRepository = false;
+
+  try {
+    remoteHead = await fetchGitHubBranchHead(settings, fetchImpl);
+    remoteFiles = await fetchGitHubTree(settings, fetchImpl);
+  } catch (error) {
+    if (isEmptyGitHubRepositoryError(error)) {
+      isEmptyRepository = true;
+    } else {
+      throw error;
+    }
+  }
+
   const plan = await planGitHubMarkdownSync({
     clips,
     remoteFiles,
   });
+
+  if (isEmptyRepository) {
+    return bootstrapEmptyGitHubRepository({
+      settings,
+      plan,
+      syncedAt,
+      persistClip,
+      fetchImpl,
+    });
+  }
 
   if (!plan.additions.length && !plan.deletions.length) {
     for (const clip of plan.resolvedDeletedClips) {
@@ -255,7 +278,7 @@ async function requestGitHubJson(settings, path, { fetchImpl = fetch } = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.message || `GitHub request failed (${response.status})`);
+    throw createGitHubError(payload?.message || `GitHub request failed (${response.status})`, response.status);
   }
   return payload;
 }
@@ -273,12 +296,89 @@ async function requestGitHubGraphQL(settings, query, variables, fetchImpl = fetc
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.message || `GitHub GraphQL request failed (${response.status})`);
+    throw createGitHubError(payload?.message || `GitHub GraphQL request failed (${response.status})`, response.status);
   }
   if (Array.isArray(payload?.errors) && payload.errors.length) {
-    throw new Error(payload.errors[0]?.message || 'GitHub GraphQL mutation failed');
+    throw createGitHubError(payload.errors[0]?.message || 'GitHub GraphQL mutation failed', response.status || 400);
   }
   return payload?.data || {};
+}
+
+async function bootstrapEmptyGitHubRepository({
+  settings,
+  plan,
+  syncedAt,
+  persistClip,
+  fetchImpl,
+} = {}) {
+  if (!plan.additions.length) {
+    for (const clip of plan.deletedClips) {
+      await persistClip(createDeletedSyncedClip(clip, syncedAt));
+    }
+    for (const clip of plan.resolvedDeletedClips) {
+      await persistClip(createDeletedSyncedClip(clip, syncedAt));
+    }
+    return {
+      status: 'noop',
+      additions: 0,
+      deletions: 0,
+      commitUrl: '',
+      syncedAt: plan.deletedClips.length || plan.resolvedDeletedClips.length ? syncedAt : null,
+    };
+  }
+
+  const bootstrapCommit = await createInitialRepositoryCommit({
+    settings,
+    additions: plan.additions,
+    fetchImpl,
+  });
+
+  for (const entry of plan.liveClips) {
+    await persistClip(createSyncedClip(entry.clip, entry.markdownExport, syncedAt));
+  }
+  for (const clip of plan.deletedClips) {
+    await persistClip(createDeletedSyncedClip(clip, syncedAt));
+  }
+  for (const clip of plan.resolvedDeletedClips) {
+    await persistClip(createDeletedSyncedClip(clip, syncedAt));
+  }
+
+  return {
+    status: 'synced',
+    additions: plan.additions.length,
+    deletions: 0,
+    commitUrl: bootstrapCommit.url || '',
+    syncedAt,
+  };
+}
+
+async function createInitialRepositoryCommit({
+  settings,
+  additions = [],
+  fetchImpl,
+} = {}) {
+  let lastCommit = {};
+  for (const entry of additions) {
+    lastCommit = await requestGitHubJson(
+      settings,
+      `/repos/${encodeURIComponent(settings.repoOwner)}/${encodeURIComponent(settings.repoName)}/contents/${encodePath(entry.path)}`,
+      {
+        fetchImpl: async (url, options = {}) => fetchImpl(url, {
+          method: 'PUT',
+          headers: buildGitHubHeaders(settings.token, {
+            'Content-Type': 'application/json',
+          }),
+          body: JSON.stringify({
+            message: buildBootstrapCommitHeadline(entry.path),
+            content: toBase64(entry.contents),
+            branch: settings.branch,
+          }),
+          ...options,
+        }),
+      },
+    );
+  }
+  return lastCommit?.commit || {};
 }
 
 function buildGitHubHeaders(token, extraHeaders = {}) {
@@ -350,4 +450,28 @@ function toBase64(value = '') {
 
 function normalizeText(value = '') {
   return value?.toString().trim() || '';
+}
+
+function createGitHubError(message, status) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function isEmptyGitHubRepositoryError(error) {
+  const message = error instanceof Error ? error.message : '';
+  const status = error && typeof error === 'object' ? error.status : undefined;
+  return (
+    status === 409
+    || message.includes('Git Repository is empty')
+    || message.includes('repository is empty')
+  );
+}
+
+function encodePath(path = '') {
+  return path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+}
+
+function buildBootstrapCommitHeadline(path = '') {
+  return `Bootstrap YCopy sync with ${path}`;
 }

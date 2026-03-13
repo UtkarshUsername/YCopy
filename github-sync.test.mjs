@@ -144,3 +144,70 @@ test('syncs dirty clips to GitHub and persists synced state', async () => {
   assert.equal(persisted[0].exportState.syncStatus, 'synced');
   assert.ok(Number.isFinite(persisted[0].exportState.lastSyncedAt));
 });
+
+test('bootstraps an empty GitHub repository with initial markdown files', async () => {
+  const clip = await finalizeClipRecord({
+    id: 'clip_empty_repo',
+    createdAt: 1741867200000,
+    updatedAt: 1741867200000,
+    text: 'First sync',
+    url: '',
+    fileIds: [],
+    meta: { title: '', tags: [], sourceApp: '', sourceDevice: '', importedFrom: '' },
+    capture: { markdown: '', captureSource: 'manual' },
+    exportState: {
+      syncStatus: 'pending',
+    },
+  }, []);
+
+  const persisted = [];
+  const fetchCalls = [];
+  const fetchImpl = async (url, options = {}) => {
+    fetchCalls.push({ url, options });
+
+    if (url.includes('/git/ref/heads/')) {
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({ message: 'Git Repository is empty.' }),
+      };
+    }
+
+    if (url.includes('/contents/')) {
+      return {
+        ok: true,
+        json: async () => ({
+          commit: {
+            sha: 'bootstrap_sha',
+            url: 'https://github.com/example/repo/commit/bootstrap_sha',
+          },
+        }),
+      };
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  const result = await syncClipsToGitHub({
+    config: {
+      repoOwner: 'example',
+      repoName: 'repo',
+      branch: 'main',
+      token: 'ghp_test',
+    },
+    clips: [clip],
+    persistClip: async (nextClip) => {
+      persisted.push(nextClip);
+      return nextClip;
+    },
+    fetchImpl,
+  });
+
+  assert.equal(result.status, 'synced');
+  assert.equal(result.additions, 1);
+  assert.equal(result.deletions, 0);
+  assert.equal(fetchCalls.length, 2);
+  assert.ok(fetchCalls[1].url.includes('/contents/'));
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].exportState.syncStatus, 'synced');
+});
