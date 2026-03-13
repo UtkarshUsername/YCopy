@@ -211,3 +211,95 @@ test('bootstraps an empty GitHub repository with initial markdown files', async 
   assert.equal(persisted.length, 1);
   assert.equal(persisted[0].exportState.syncStatus, 'synced');
 });
+
+test('retries once when the expected head moves before commit', async () => {
+  const clip = await finalizeClipRecord({
+    id: 'clip_retry',
+    createdAt: 1741867200000,
+    updatedAt: 1741867200000,
+    text: 'Retry me',
+    url: '',
+    fileIds: [],
+    meta: { title: '', tags: [], sourceApp: '', sourceDevice: '', importedFrom: '' },
+    capture: { markdown: '', captureSource: 'manual' },
+    exportState: {
+      syncStatus: 'pending',
+    },
+  }, []);
+
+  const persisted = [];
+  let refCalls = 0;
+  let treeCalls = 0;
+  let graphCalls = 0;
+  const fetchImpl = async (url, options = {}) => {
+    if (url.includes('/git/ref/heads/')) {
+      refCalls += 1;
+      return {
+        ok: true,
+        json: async () => ({ object: { sha: refCalls === 1 ? 'old_head' : 'new_head' } }),
+      };
+    }
+
+    if (url.includes('/git/trees/')) {
+      treeCalls += 1;
+      return {
+        ok: true,
+        json: async () => ({ truncated: false, tree: [] }),
+      };
+    }
+
+    if (url.endsWith('/graphql')) {
+      graphCalls += 1;
+      if (graphCalls === 1) {
+        return {
+          ok: true,
+          json: async () => ({
+            errors: [
+              {
+                message: 'Expected branch to point to "old_head" but it did not. Pull and try again.',
+              },
+            ],
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            createCommitOnBranch: {
+              commit: {
+                oid: 'new_commit',
+                url: 'https://github.com/example/repo/commit/new_commit',
+              },
+            },
+          },
+        }),
+      };
+    }
+
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  const result = await syncClipsToGitHub({
+    config: {
+      repoOwner: 'example',
+      repoName: 'repo',
+      branch: 'main',
+      token: 'ghp_test',
+    },
+    clips: [clip],
+    persistClip: async (nextClip) => {
+      persisted.push(nextClip);
+      return nextClip;
+    },
+    fetchImpl,
+  });
+
+  assert.equal(result.status, 'synced');
+  assert.equal(refCalls, 2);
+  assert.equal(treeCalls, 2);
+  assert.equal(graphCalls, 2);
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].exportState.syncStatus, 'synced');
+});

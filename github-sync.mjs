@@ -108,95 +108,104 @@ export async function syncClipsToGitHub({
   }
 
   const settings = validation.settings;
-  const syncedAt = Date.now();
-  let remoteHead = '';
-  let remoteFiles = new Map();
-  let isEmptyRepository = false;
 
-  try {
-    remoteHead = await fetchGitHubBranchHead(settings, fetchImpl);
-    remoteFiles = await fetchGitHubTree(settings, fetchImpl);
-  } catch (error) {
-    if (isEmptyGitHubRepositoryError(error)) {
-      isEmptyRepository = true;
-    } else {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const syncedAt = Date.now();
+    let remoteHead = '';
+    let remoteFiles = new Map();
+    let isEmptyRepository = false;
+
+    try {
+      remoteHead = await fetchGitHubBranchHead(settings, fetchImpl);
+      remoteFiles = await fetchGitHubTree(settings, fetchImpl);
+    } catch (error) {
+      if (isEmptyGitHubRepositoryError(error)) {
+        isEmptyRepository = true;
+      } else {
+        throw error;
+      }
+    }
+
+    const plan = await planGitHubMarkdownSync({
+      clips,
+      remoteFiles,
+    });
+
+    if (isEmptyRepository) {
+      return bootstrapEmptyGitHubRepository({
+        settings,
+        plan,
+        syncedAt,
+        persistClip,
+        fetchImpl,
+      });
+    }
+
+    if (!plan.additions.length && !plan.deletions.length) {
+      for (const clip of plan.resolvedDeletedClips) {
+        await persistClip(createDeletedSyncedClip(clip, syncedAt));
+      }
+      return {
+        status: 'noop',
+        additions: 0,
+        deletions: 0,
+        commitUrl: '',
+        syncedAt: plan.resolvedDeletedClips.length ? syncedAt : null,
+      };
+    }
+
+    const additionsPayload = plan.additions.map((entry) => ({
+      path: entry.path,
+      contents: toBase64(entry.contents),
+    }));
+    const deletionsPayload = plan.deletions.map((entry) => ({
+      path: entry.path,
+    }));
+
+    try {
+      const commit = await createGitHubCommit({
+        settings,
+        expectedHeadOid: remoteHead,
+        additions: additionsPayload,
+        deletions: deletionsPayload,
+        fetchImpl,
+      });
+
+      for (const entry of plan.liveClips) {
+        await persistClip(createSyncedClip(entry.clip, entry.markdownExport, syncedAt));
+      }
+
+      for (const clip of plan.deletedClips) {
+        await persistClip(createDeletedSyncedClip(clip, syncedAt));
+      }
+      for (const clip of plan.resolvedDeletedClips) {
+        await persistClip(createDeletedSyncedClip(clip, syncedAt));
+      }
+
+      return {
+        status: 'synced',
+        additions: plan.additions.length,
+        deletions: plan.deletions.length,
+        commitUrl: commit.url || '',
+        syncedAt,
+      };
+    } catch (error) {
+      if (attempt === 0 && isGitHubHeadMismatchError(error)) {
+        continue;
+      }
+
+      const message = error instanceof Error ? error.message : 'Git sync failed';
+      for (const entry of plan.liveClips) {
+        await persistClip(createFailedClip(entry.clip, message));
+      }
+      for (const clip of plan.deletedClips) {
+        await persistClip(createFailedClip(clip, message));
+      }
       throw error;
     }
   }
 
-  const plan = await planGitHubMarkdownSync({
-    clips,
-    remoteFiles,
-  });
-
-  if (isEmptyRepository) {
-    return bootstrapEmptyGitHubRepository({
-      settings,
-      plan,
-      syncedAt,
-      persistClip,
-      fetchImpl,
-    });
-  }
-
-  if (!plan.additions.length && !plan.deletions.length) {
-    for (const clip of plan.resolvedDeletedClips) {
-      await persistClip(createDeletedSyncedClip(clip, syncedAt));
-    }
-    return {
-      status: 'noop',
-      additions: 0,
-      deletions: 0,
-      commitUrl: '',
-      syncedAt: plan.resolvedDeletedClips.length ? syncedAt : null,
-    };
-  }
-
-  const additionsPayload = plan.additions.map((entry) => ({
-    path: entry.path,
-    contents: toBase64(entry.contents),
-  }));
-  const deletionsPayload = plan.deletions.map((entry) => ({
-    path: entry.path,
-  }));
-
-  try {
-    const commit = await createGitHubCommit({
-      settings,
-      expectedHeadOid: remoteHead,
-      additions: additionsPayload,
-      deletions: deletionsPayload,
-      fetchImpl,
-    });
-
-    for (const entry of plan.liveClips) {
-      await persistClip(createSyncedClip(entry.clip, entry.markdownExport, syncedAt));
-    }
-
-    for (const clip of plan.deletedClips) {
-      await persistClip(createDeletedSyncedClip(clip, syncedAt));
-    }
-    for (const clip of plan.resolvedDeletedClips) {
-      await persistClip(createDeletedSyncedClip(clip, syncedAt));
-    }
-
-    return {
-      status: 'synced',
-      additions: plan.additions.length,
-      deletions: plan.deletions.length,
-      commitUrl: commit.url || '',
-      syncedAt,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Git sync failed';
-    for (const entry of plan.liveClips) {
-      await persistClip(createFailedClip(entry.clip, message));
-    }
-    for (const clip of plan.deletedClips) {
-      await persistClip(createFailedClip(clip, message));
-    }
-    throw error;
-  }
+  throw new Error('Git sync failed after retrying');
 }
 
 async function fetchGitHubBranchHead(settings, fetchImpl) {
@@ -466,6 +475,11 @@ function isEmptyGitHubRepositoryError(error) {
     || message.includes('Git Repository is empty')
     || message.includes('repository is empty')
   );
+}
+
+function isGitHubHeadMismatchError(error) {
+  const message = error instanceof Error ? error.message : '';
+  return message.includes('Expected branch to point to');
 }
 
 function encodePath(path = '') {
