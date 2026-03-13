@@ -787,6 +787,15 @@ button.ghost:hover {
   border-top: 1px solid rgba(26, 29, 46, 0.08);
 }
 
+.settings-auth-group {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.settings-auth-group[hidden] {
+  display: none;
+}
+
 .settings-section-head {
   display: flex;
   align-items: center;
@@ -829,6 +838,10 @@ button.ghost:hover {
   display: flex;
   gap: 0.65rem;
   flex-wrap: wrap;
+}
+
+.settings-actions-compact {
+  margin-top: -0.15rem;
 }
 
 .settings-actions > * {

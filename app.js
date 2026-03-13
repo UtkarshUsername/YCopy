@@ -38,6 +38,10 @@ const githubOwnerInput = document.getElementById('github-owner');
 const githubRepoInput = document.getElementById('github-repo');
 const githubBranchInput = document.getElementById('github-branch');
 const githubTokenInput = document.getElementById('github-token');
+const githubOAuthBaseUrlInput = document.getElementById('github-oauth-base-url');
+const githubOAuthEndpointInput = document.getElementById('github-oauth-endpoint');
+const githubOAuthSignInButton = document.getElementById('github-oauth-sign-in');
+const githubOAuthClearButton = document.getElementById('github-oauth-clear');
 const syncStatus = document.getElementById('sync-status');
 const syncFromSettingsButton = document.getElementById('sync-from-settings');
 const lightbox = document.getElementById('lightbox');
@@ -157,8 +161,13 @@ let autoExpireInProgress = false;
 let maxEntriesPruneInProgress = false;
 let dataRepairPromise = null;
 let syncInProgress = false;
-let gitHubSyncSettings = { ...DEFAULT_GITHUB_SYNC_SETTINGS };
+let gitHubSyncSettings = {
+  ...DEFAULT_GITHUB_SYNC_SETTINGS,
+  oauthBaseUrl: '',
+  oauthEndpoint: 'oauth',
+};
 let lastSyncMessage = 'Git sync is off.';
+let oauthPopup = null;
 
 function syncSearchStickyOffset() {
   const activeHeader = headerSelection && !headerSelection.hidden
@@ -255,13 +264,27 @@ function saveSettings() {
 function loadGitHubSyncSettings() {
   try {
     const raw = localStorage.getItem(GITHUB_SYNC_STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_GITHUB_SYNC_SETTINGS };
+    if (!raw) {
+      return {
+        ...DEFAULT_GITHUB_SYNC_SETTINGS,
+        oauthBaseUrl: '',
+        oauthEndpoint: 'oauth',
+      };
+    }
+    const parsed = JSON.parse(raw);
+    const normalizedCore = normalizeGitHubSyncSettings(parsed);
     return {
       ...DEFAULT_GITHUB_SYNC_SETTINGS,
-      ...normalizeGitHubSyncSettings(JSON.parse(raw)),
+      ...normalizedCore,
+      oauthBaseUrl: parsed?.oauthBaseUrl?.toString().trim() || '',
+      oauthEndpoint: parsed?.oauthEndpoint?.toString().trim() || 'oauth',
     };
   } catch {
-    return { ...DEFAULT_GITHUB_SYNC_SETTINGS };
+    return {
+      ...DEFAULT_GITHUB_SYNC_SETTINGS,
+      oauthBaseUrl: '',
+      oauthEndpoint: 'oauth',
+    };
   }
 }
 
@@ -277,6 +300,38 @@ function getMaskedTokenLabel(token = '') {
   if (!token) return 'No token saved';
   const visibleTail = token.slice(-4);
   return `Token saved (${visibleTail.padStart(4, '•')})`;
+}
+
+function buildOAuthUrl(baseUrl = '', authEndpoint = 'oauth') {
+  const trimmedBaseUrl = baseUrl.toString().trim().replace(/\/+$/g, '');
+  const trimmedEndpoint = authEndpoint.toString().trim();
+  if (!trimmedBaseUrl || !trimmedEndpoint) return '';
+  if (/^https?:\/\//i.test(trimmedEndpoint)) return trimmedEndpoint;
+  return `${trimmedBaseUrl}/${trimmedEndpoint.replace(/^\/+/g, '')}`;
+}
+
+function normalizeGitHubSyncDraft() {
+  const core = normalizeGitHubSyncSettings({
+    repoOwner: githubOwnerInput?.value ?? gitHubSyncSettings.repoOwner,
+    repoName: githubRepoInput?.value ?? gitHubSyncSettings.repoName,
+    branch: githubBranchInput?.value ?? gitHubSyncSettings.branch,
+    token: gitHubSyncSettings.token,
+  });
+  return {
+    ...gitHubSyncSettings,
+    ...core,
+    oauthBaseUrl: githubOAuthBaseUrlInput?.value?.trim() ?? gitHubSyncSettings.oauthBaseUrl,
+    oauthEndpoint: githubOAuthEndpointInput?.value?.trim() || 'oauth',
+  };
+}
+
+function getOAuthValidationError(settings = gitHubSyncSettings) {
+  if (!settings.oauthBaseUrl) return 'OAuth base URL is required';
+  if (!settings.oauthEndpoint) return 'OAuth endpoint is required';
+  if (!buildOAuthUrl(settings.oauthBaseUrl, settings.oauthEndpoint)) {
+    return 'OAuth endpoint is invalid';
+  }
+  return '';
 }
 
 function getAutoExpireLabel(autoExpireMs = appSettings.autoExpireMs) {
@@ -301,20 +356,17 @@ function syncSettingsForm() {
   if (githubBranchInput) {
     githubBranchInput.value = gitHubSyncSettings.branch;
   }
+  if (githubOAuthBaseUrlInput) {
+    githubOAuthBaseUrlInput.value = gitHubSyncSettings.oauthBaseUrl || '';
+  }
+  if (githubOAuthEndpointInput) {
+    githubOAuthEndpointInput.value = gitHubSyncSettings.oauthEndpoint || 'oauth';
+  }
   if (githubTokenInput) {
-    githubTokenInput.value = gitHubSyncSettings.token;
-    githubTokenInput.placeholder = gitHubSyncSettings.token ? getMaskedTokenLabel(gitHubSyncSettings.token) : 'github_pat_...';
+    githubTokenInput.value = '';
+    githubTokenInput.placeholder = gitHubSyncSettings.token ? getMaskedTokenLabel(gitHubSyncSettings.token) : 'No OAuth token saved';
   }
   updateSyncControls();
-}
-
-function readGitHubSyncDraft() {
-  return normalizeGitHubSyncSettings({
-    repoOwner: githubOwnerInput?.value ?? gitHubSyncSettings.repoOwner,
-    repoName: githubRepoInput?.value ?? gitHubSyncSettings.repoName,
-    branch: githubBranchInput?.value ?? gitHubSyncSettings.branch,
-    token: githubTokenInput?.value ?? gitHubSyncSettings.token,
-  });
 }
 
 function getSyncValidationResult({ useDraft = false } = {}) {
@@ -329,8 +381,23 @@ function getSyncValidationResult({ useDraft = false } = {}) {
     };
   }
 
-  const validation = validateGitHubSyncSettings(useDraft ? readGitHubSyncDraft() : gitHubSyncSettings);
+  const candidateSettings = useDraft ? normalizeGitHubSyncDraft() : gitHubSyncSettings;
+  const oauthValidationError = getOAuthValidationError(candidateSettings);
+  if (oauthValidationError) {
+    return {
+      isValid: false,
+      message: oauthValidationError,
+    };
+  }
+
+  const validation = validateGitHubSyncSettings(candidateSettings);
   if (!validation.isValid) {
+    if (validation.errors.includes('GitHub token is required')) {
+      return {
+        isValid: false,
+        message: candidateSettings.token ? 'Ready to sync to GitHub.' : 'Sign in with GitHub first',
+      };
+    }
     return {
       isValid: false,
       message: validation.errors[0],
@@ -346,6 +413,7 @@ function getSyncValidationResult({ useDraft = false } = {}) {
 function updateSyncControls() {
   const validation = getSyncValidationResult();
   const draftValidation = getSyncValidationResult({ useDraft: true });
+  const oauthPopupOpen = Boolean(oauthPopup && !oauthPopup.closed);
   if (syncStatus) {
     syncStatus.textContent = syncInProgress
       ? 'Syncing with GitHub…'
@@ -360,6 +428,152 @@ function updateSyncControls() {
   if (syncFromSettingsButton) {
     syncFromSettingsButton.disabled = syncInProgress || !draftValidation.isValid;
   }
+  if (githubOAuthSignInButton) {
+    githubOAuthSignInButton.disabled = syncInProgress || oauthPopupOpen || Boolean(getOAuthValidationError(normalizeGitHubSyncDraft()));
+  }
+  if (githubOAuthClearButton) {
+    githubOAuthClearButton.disabled = syncInProgress || oauthPopupOpen || !gitHubSyncSettings.token;
+  }
+}
+
+function mergeGitHubSyncSettings(nextSettings) {
+  const oauthSourceChanged = (
+    gitHubSyncSettings.oauthBaseUrl !== nextSettings.oauthBaseUrl
+    || gitHubSyncSettings.oauthEndpoint !== nextSettings.oauthEndpoint
+  );
+
+  gitHubSyncSettings = {
+    ...gitHubSyncSettings,
+    ...nextSettings,
+    token: oauthSourceChanged ? '' : nextSettings.token,
+  };
+}
+
+async function signInWithGitHubOAuth() {
+  const draftSettings = normalizeGitHubSyncDraft();
+  const oauthValidationError = getOAuthValidationError(draftSettings);
+  if (oauthValidationError) {
+    lastSyncMessage = oauthValidationError;
+    updateSyncControls();
+    showToast(oauthValidationError);
+    return;
+  }
+
+  const popupUrl = buildOAuthUrl(draftSettings.oauthBaseUrl, draftSettings.oauthEndpoint);
+  if (!popupUrl) {
+    showToast('OAuth endpoint is invalid');
+    return;
+  }
+
+  const popupFeatures = 'popup=yes,width=520,height=720,left=120,top=80,resizable=yes,scrollbars=yes';
+  const popup = window.open(popupUrl, 'ycopy-github-oauth', popupFeatures);
+  if (!popup) {
+    showToast('Popup blocked. Allow popups and try again.');
+    return;
+  }
+
+  oauthPopup = popup;
+  lastSyncMessage = 'Waiting for GitHub sign-in…';
+  updateSyncControls();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('message', handleMessage);
+      window.clearInterval(closePollId);
+      if (oauthPopup && oauthPopup.closed) {
+        oauthPopup = null;
+      }
+      updateSyncControls();
+    };
+
+    const finishSuccess = (token) => {
+      gitHubSyncSettings = {
+        ...draftSettings,
+        token,
+      };
+      saveGitHubSyncSettings();
+      if (githubTokenInput) {
+        githubTokenInput.placeholder = getMaskedTokenLabel(token);
+      }
+      lastSyncMessage = 'GitHub OAuth connected.';
+      cleanup();
+      showToast('GitHub sign-in complete');
+      resolve(token);
+    };
+
+    const finishFailure = (message) => {
+      lastSyncMessage = message;
+      cleanup();
+      reject(new Error(message));
+    };
+
+    const handleMessage = (event) => {
+      if (event.source !== popup) return;
+      const payload = event.data;
+      if (payload === 'authorizing:github') {
+        lastSyncMessage = 'Authorizing with GitHub…';
+        updateSyncControls();
+        return;
+      }
+
+      if (typeof payload === 'string' && payload.startsWith('authorization:github:success:')) {
+        const rawContent = payload.slice('authorization:github:success:'.length);
+        try {
+          const parsed = JSON.parse(rawContent);
+          const token = parsed?.token || parsed?.access_token || '';
+          if (!token) {
+            finishFailure('OAuth completed without an access token');
+            return;
+          }
+          finishSuccess(token);
+        } catch {
+          finishFailure('OAuth response could not be parsed');
+        }
+        return;
+      }
+
+      if (typeof payload === 'string' && payload.startsWith('authorization:github:error:')) {
+        finishFailure(payload.slice('authorization:github:error:'.length) || 'GitHub sign-in failed');
+        return;
+      }
+
+      if (payload && typeof payload === 'object') {
+        const token = payload.token || payload.access_token || '';
+        if (token) {
+          finishSuccess(token);
+        }
+      }
+    };
+
+    const closePollId = window.setInterval(() => {
+      if (!popup || popup.closed) {
+        window.clearInterval(closePollId);
+        oauthPopup = null;
+        if (!settled) {
+          finishFailure('GitHub sign-in was closed');
+        }
+      }
+    }, 400);
+
+    window.addEventListener('message', handleMessage);
+  });
+}
+
+function clearGitHubOAuthToken() {
+  gitHubSyncSettings = {
+    ...gitHubSyncSettings,
+    token: '',
+  };
+  saveGitHubSyncSettings();
+  lastSyncMessage = 'OAuth token cleared.';
+  if (githubTokenInput) {
+    githubTokenInput.placeholder = 'No OAuth token saved';
+  }
+  updateSyncControls();
 }
 
 function getClipCountLabel(count) {
@@ -1574,23 +1788,31 @@ settingsOverlay?.addEventListener('click', (e) => {
   if (e.target === settingsOverlay) closeSettingsModal();
 });
 
-[markdownSyncEnabledInput, githubOwnerInput, githubRepoInput, githubBranchInput, githubTokenInput].forEach((field) => {
+[markdownSyncEnabledInput, githubOwnerInput, githubRepoInput, githubBranchInput, githubOAuthBaseUrlInput, githubOAuthEndpointInput].forEach((field) => {
   field?.addEventListener('input', updateSyncControls);
   field?.addEventListener('change', updateSyncControls);
 });
 
+githubOAuthSignInButton?.addEventListener('click', async () => {
+  try {
+    await signInWithGitHubOAuth();
+  } catch {
+    // Status/toast are handled in the OAuth flow.
+  }
+});
+
+githubOAuthClearButton?.addEventListener('click', () => {
+  clearGitHubOAuthToken();
+  showToast('Cleared OAuth token');
+});
+
 syncFromSettingsButton?.addEventListener('click', async () => {
-  const draftSettings = normalizeGitHubSyncSettings({
-    repoOwner: githubOwnerInput?.value,
-    repoName: githubRepoInput?.value,
-    branch: githubBranchInput?.value,
-    token: githubTokenInput?.value,
-  });
+  const draftSettings = normalizeGitHubSyncDraft();
   appSettings = {
     ...appSettings,
     markdownSyncEnabled: Boolean(markdownSyncEnabledInput?.checked),
   };
-  gitHubSyncSettings = draftSettings;
+  mergeGitHubSyncSettings(draftSettings);
   saveSettings();
   saveGitHubSyncSettings();
   updateSyncControls();
@@ -1602,19 +1824,14 @@ settingsForm?.addEventListener('submit', async (event) => {
   const nextAutoExpireMs = normalizeAutoExpireMs(expiryDurationSelect?.value);
   const nextMaxEntries = normalizeMaxEntries(maxEntriesInput?.value);
   const nextMarkdownSyncEnabled = Boolean(markdownSyncEnabledInput?.checked);
-  const nextGitHubSyncSettings = normalizeGitHubSyncSettings({
-    repoOwner: githubOwnerInput?.value,
-    repoName: githubRepoInput?.value,
-    branch: githubBranchInput?.value,
-    token: githubTokenInput?.value,
-  });
+  const nextGitHubSyncSettings = normalizeGitHubSyncDraft();
   appSettings = {
     ...appSettings,
     autoExpireMs: nextAutoExpireMs,
     maxEntries: nextMaxEntries,
     markdownSyncEnabled: nextMarkdownSyncEnabled,
   };
-  gitHubSyncSettings = nextGitHubSyncSettings;
+  mergeGitHubSyncSettings(nextGitHubSyncSettings);
   saveSettings();
   saveGitHubSyncSettings();
   startAutoExpireTimer();

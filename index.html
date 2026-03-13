@@ -149,11 +149,22 @@
               Branch
               <input id="github-branch" name="github-branch" type="text" placeholder="main" autocomplete="off" autocapitalize="off" spellcheck="false" />
             </label>
-            <label>
-              Personal access token
-              <input id="github-token" name="github-token" type="password" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" spellcheck="false" />
-            </label>
-            <p class="settings-note settings-note-compact">YCopy sync writes only Markdown clip files. Token needs repository contents write access.</p>
+            <div class="settings-auth-group">
+              <label>
+                OAuth base URL
+                <input id="github-oauth-base-url" name="github-oauth-base-url" type="url" placeholder="https://astro.uditmittal.com" autocomplete="off" autocapitalize="off" spellcheck="false" />
+              </label>
+              <label>
+                Auth endpoint
+                <input id="github-oauth-endpoint" name="github-oauth-endpoint" type="text" placeholder="oauth" autocomplete="off" autocapitalize="off" spellcheck="false" />
+              </label>
+              <input id="github-token" name="github-token" type="password" hidden aria-hidden="true" tabindex="-1" />
+              <div class="settings-actions settings-actions-compact">
+                <button id="github-oauth-sign-in" type="button" class="secondary-btn">Sign in with GitHub</button>
+                <button id="github-oauth-clear" type="button" class="secondary-btn">Clear OAuth token</button>
+              </div>
+              <p class="settings-note settings-note-compact">Use the same external OAuth style as the Astro CMS config: `base_url` plus `auth_endpoint`.</p>
+            </div>
             <p id="sync-status" class="sync-status" aria-live="polite">Git sync is off.</p>
           </div>
           <p class="settings-note">Pinned clips are never auto-cleared by time and are excluded from max count. When max is reached, oldest unpinned clips are removed first.</p>
